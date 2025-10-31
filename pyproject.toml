@@ -38,7 +38,5 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/HZBHZB1234/Py-Translate-Kit"
 
-[project.scripts]
-py-translate = "py_translate_kit.main:main"
 
 [tool.setuptools_scm]
