@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "translatekit"
+description = "一个简单快捷的翻译服务工具包，支持自定义脚本扩展"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "HZBHZB1234", email = "HZBHZB1234@outlook.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+requires-python = ">=3.7"
+dynamic = ["version"]
+dependencies = [
+    "requests>=2.25.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "twine",
+    "pytest>=6.0",
+    "pytest-cov",
+]
+
+[project.urls]
+Homepage = "https://github.com/HZBHZB1234/Py-Translate-Kit"
+
+[project.scripts]
+py-translate = "py_translate_kit.main:main"
+
+[tool.setuptools_scm]
