@@ -16,14 +16,18 @@ class BaseTranslator(ABC):
     
     Optional methods that subclasses can override (with default implementations in base class):
     以下方法是可选的，子类可以覆盖（基类中已有默认实现）：
-        _preprocess_text() -> str                 # 单个文本预处理
-        _postprocess_text() -> str                # 单个文本后处理
-        _preprocess_batch() -> List[Union[str,dict,List]]    # 批量文本预处理
-        _postprocess_batch() -> List[Union[str,dict,List]]   # 批量文本后处理
-        _validate_config() -> None                # 配置验证
-        get_usage_info() -> Dict[str, Any]        # 获取使用信息
-        get_supported_languages() -> List[str]    # 获取支持的语言
-        validate_language() -> bool               # 验证语言代码
+        _builtin_preprocess_text() -> str              # 基类内建单个文本预处理
+        _builtin_postprocess_text() -> str             # 基类内建单个文本后处理
+        _builtin_preprocess_batch() -> List[Union[str,dict,List]]    # 基类内建批量文本预处理
+        _builtin_postprocess_batch() -> List[Union[str,dict,List]]   # 基类内建批量文本后处理
+        _preprocess_text() -> str                      # 子类单个文本预处理
+        _postprocess_text() -> str                     # 子类单个文本后处理
+        _preprocess_batch() -> List[Union[str,dict,List]]    # 子类批量文本预处理
+        _postprocess_batch() -> List[Union[str,dict,List]]   # 子类批量文本后处理
+        _validate_config() -> None                     # 配置验证
+        get_usage_info() -> Dict[str, Any]             # 获取使用信息
+        get_supported_languages() -> List[str]         # 获取支持的语言
+        validate_language() -> bool                    # 验证语言代码
         
     Optional class attributes that subclasses can override:
     以下类属性是可选的，子类可以覆盖：
@@ -141,14 +145,18 @@ class BaseTranslator(ABC):
             **kwargs
         }
         
-        # 预处理文本，传入配置参数
-        processed_text = self._preprocess_text(text, **config)
+        # 预处理文本：先进行基类内建预处理，再进行子类预处理
+        base_processed_text = self._builtin_preprocess_text(text, **config)
+        processed_text = self._preprocess_text(base_processed_text, **config)
         
         # 执行翻译
         result = self._translate(processed_text, src, dest, **config)
         
-        # 后处理文本，传入配置参数
-        return self._postprocess_text(result, **config)
+        # 后处理文本：先进行子类后处理，再进行基类内建后处理
+        subclass_processed_result = self._postprocess_text(result, **config)
+        final_result = self._builtin_postprocess_text(subclass_processed_result, **config)
+        
+        return final_result
 
     def translate_batch(self, texts: List[Union[str,dict,List]], src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
         """
@@ -172,14 +180,18 @@ class BaseTranslator(ABC):
             **kwargs
         }
         
-        # 批量预处理文本，使用专门的批量预处理方法
-        processed_texts = self._preprocess_batch(texts, **config)
+        # 批量预处理：先进行基类内建批量预处理，再进行子类批量预处理
+        base_processed_texts = self._builtin_preprocess_batch(texts, **config)
+        processed_texts = self._preprocess_batch(base_processed_texts, **config)
         
         # 执行批量翻译
         results = self._translate_batch(processed_texts, src, dest, **config)
         
-        # 批量后处理文本，使用专门的批量后处理方法
-        return self._postprocess_batch(results, **config)
+        # 批量后处理：先进行子类批量后处理，再进行基类内建批量后处理
+        subclass_processed_results = self._postprocess_batch(results, **config)
+        final_results = self._builtin_postprocess_batch(subclass_processed_results, **config)
+        
+        return final_results
 
     def get_api_config_template(self) -> List[Dict[str, Any]]:
         """
@@ -278,10 +290,10 @@ class BaseTranslator(ABC):
         if self._function_config.get('rate_limit_delay') < 0:
             raise ValueError("Rate limit delay cannot be negative / 速率限制延迟不能为负数")
 
-    def _preprocess_text(self, text: str, **kwargs) -> str:
+    def _builtin_preprocess_text(self, text: str, **kwargs) -> str:
         """
-        Preprocess text before translation
-        翻译前预处理文本
+        Base class built-in text preprocessing before translation
+        翻译前基类内建文本预处理
         
         Args:
             text: Input text / 输入文本
@@ -290,12 +302,16 @@ class BaseTranslator(ABC):
         Returns:
             Preprocessed text / 预处理后的文本
         """
+        # 基类内建预处理逻辑
+        # 例如：去除多余空格、标准化换行符等
+        if isinstance(text, str):
+            text = text.strip()
         return text
 
-    def _postprocess_text(self, text: str, **kwargs) -> str:
+    def _builtin_postprocess_text(self, text: str, **kwargs) -> str:
         """
-        Postprocess text after translation
-        翻译后处理文本
+        Base class built-in text postprocessing after translation
+        翻译后基类内建文本后处理
         
         Args:
             text: Translated text / 翻译后的文本
@@ -304,12 +320,76 @@ class BaseTranslator(ABC):
         Returns:
             Postprocessed text / 后处理后的文本
         """
+        # 基类内建后处理逻辑
+        # 例如：确保输出为字符串、处理特殊字符等
+        if not isinstance(text, str):
+            text = str(text)
+        return text
+
+    def _builtin_preprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+        """
+        Base class built-in batch preprocessing before translation
+        翻译前基类内建批量预处理
+        
+        Args:
+            texts: List of texts to preprocess / 要预处理的文本列表
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            List of preprocessed texts / 预处理后的文本列表
+        """
+        # 默认实现：对每个文本单独调用_builtin_preprocess_text
+        return [self._builtin_preprocess_text(text, **kwargs) for text in texts]
+
+    def _builtin_postprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+        """
+        Base class built-in batch postprocessing after translation
+        翻译后基类内建批量后处理
+        
+        Args:
+            texts: List of translated texts to postprocess / 要后处理的翻译后文本列表
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            List of postprocessed texts / 后处理后的文本列表
+        """
+        # 默认实现：对每个文本单独调用_builtin_postprocess_text
+        return [self._builtin_postprocess_text(text, **kwargs) for text in texts]
+
+    def _preprocess_text(self, text: str, **kwargs) -> str:
+        """
+        Subclass text preprocessing before translation (can be overridden by subclasses)
+        翻译前子类文本预处理（子类可以覆盖）
+        
+        Args:
+            text: Input text / 输入文本
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            Preprocessed text / 预处理后的文本
+        """
+        # 子类可以覆盖此方法实现特定的预处理逻辑
+        return text
+
+    def _postprocess_text(self, text: str, **kwargs) -> str:
+        """
+        Subclass text postprocessing after translation (can be overridden by subclasses)
+        翻译后子类文本后处理（子类可以覆盖）
+        
+        Args:
+            text: Translated text / 翻译后的文本
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            Postprocessed text / 后处理后的文本
+        """
+        # 子类可以覆盖此方法实现特定的后处理逻辑
         return text
 
     def _preprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
         """
-        Preprocess multiple texts before batch translation
-        批量翻译前预处理多个文本
+        Subclass batch preprocessing before translation (can be overridden by subclasses)
+        翻译前子类批量预处理（子类可以覆盖）
         
         Args:
             texts: List of texts to preprocess / 要预处理的文本列表
@@ -323,8 +403,8 @@ class BaseTranslator(ABC):
 
     def _postprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
         """
-        Postprocess multiple texts after batch translation
-        批量翻译后处理多个文本
+        Subclass batch postprocessing after translation (can be overridden by subclasses)
+        翻译后子类批量后处理（子类可以覆盖）
         
         Args:
             texts: List of translated texts to postprocess / 要后处理的翻译后文本列表
