@@ -3,10 +3,27 @@ from typing import List, Optional, Union, Dict, Any
 import logging
 
 class BaseTranslator(ABC):
-    """Base class for all translators / 所有翻译器的基类"""
+    """
+    Base class for all translators
+    所有翻译器的基类
     
-    # API configuration template, can be overridden by subclasses
-    # API配置模板，子类可以覆盖
+    以下是抽象方法，子类必须实现：
+        _translate() -> str
+        
+        _translate_batch() -> Union[List[str],Dict]
+    这两个方法为翻译实际方法
+    
+    以下方法是可选的，子类建议覆盖：
+        参数：
+            API_CONFIG_TEMPLATE
+
+            _function_config
+
+            _user_config
+    """
+    
+    # API configuration template, be used as reference, can be overridden by subclasses
+    # API配置模板，将会作为参考，子类可以覆盖
     API_CONFIG_TEMPLATE = [
         {
             "id": "apikey",
@@ -14,7 +31,19 @@ class BaseTranslator(ABC):
             "addition": {"type": "pwd"}
         }
     ]
+
+    # Function configurationused, used for built-in text preprocessing methods, can be overridden by subclasses
+    # 函数配置，用于使用内置的预处理文本方式，子类可以覆盖
+    _function_config = {
+            'timeout': 30,
+            'retry_attempts': 3,
+            'rate_limit_delay': 1.0,
+            'batch_size': 10
+        }
     
+    # User configuration, similar to apikey, include other user configurations, can be overridden by subclasses
+    # 用户配置，类似于apikey，包含其他的用户配置，子类可以覆盖
+    _user_config = {}
     def __init__(self, api_config: Optional[dict] = None, **kwargs):
         """
         Initialize translator with API configuration and function configuration
@@ -26,13 +55,9 @@ class BaseTranslator(ABC):
         """
         self.api_config = api_config or {}
         self._function_config = {
-            'timeout': 30,
-            'retry_attempts': 3,
-            'rate_limit_delay': 1.0,
-            'batch_size': 10,
+            **self._function_config
             **kwargs
         }
-        self._user_config = {}
         self.logger = logging.getLogger(self.__class__.__name__)
         self._validate_config()
 
@@ -54,13 +79,13 @@ class BaseTranslator(ABC):
         pass
 
     @abstractmethod
-    def _translate_batch(self, texts: List[str], src: str, dest: str, **kwargs) -> List[str]:
+    def _translate_batch(self, texts: Union[List[str],Dict], src: str, dest: str, **kwargs) -> Union[List[str],Dict]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
         
         Args:
-            texts: List of texts to translate / 要翻译的文本列表
+            texts: List or Dict of texts to translate / 要翻译的文本列表或字典
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
             **kwargs: Configuration parameters / 配置参数
@@ -101,13 +126,13 @@ class BaseTranslator(ABC):
         # 后处理文本
         return self._postprocess_text(result)
 
-    def translate_batch(self, texts: List[str], src: str, dest: str, **kwargs) -> List[str]:
+    def translate_batch(self, texts: Union[List[str],Dict], src: str, dest: str, **kwargs) -> Union[List[str],Dict]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
         
         Args:
-            texts: List of texts to translate / 要翻译的文本列表
+            texts: List or Dict of texts to translate / 要翻译的文本列表或字典
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
             **kwargs: Additional configuration parameters / 额外的配置参数
@@ -240,7 +265,7 @@ class BaseTranslator(ABC):
         Returns:
             Preprocessed text / 预处理后的文本
         """
-        return text.strip()
+        return text
 
     def _postprocess_text(self, text: str) -> str:
         """
@@ -253,9 +278,8 @@ class BaseTranslator(ABC):
         Returns:
             Postprocessed text / 后处理后的文本
         """
-        return text.strip()
+        return text
 
-    @abstractmethod
     def get_usage_info(self) -> Dict[str, Any]:
         """
         Get API usage information (quota, remaining requests, etc.)
