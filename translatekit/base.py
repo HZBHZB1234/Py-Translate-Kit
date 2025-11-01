@@ -16,10 +16,6 @@ class BaseTranslator(ABC):
     
     Optional methods that subclasses can override (with default implementations in base class):
     以下方法是可选的，子类可以覆盖（基类中已有默认实现）：
-        _builtin_preprocess_text() -> str              # 基类内建单个文本预处理
-        _builtin_postprocess_text() -> str             # 基类内建单个文本后处理
-        _builtin_preprocess_batch() -> List[Union[str,dict,List]]    # 基类内建批量文本预处理
-        _builtin_postprocess_batch() -> List[Union[str,dict,List]]   # 基类内建批量文本后处理
         _preprocess_text() -> str                      # 子类单个文本预处理
         _postprocess_text() -> str                     # 子类单个文本后处理
         _preprocess_batch() -> List[Union[str,dict,List]]    # 子类批量文本预处理
@@ -34,12 +30,14 @@ class BaseTranslator(ABC):
         API_CONFIG_TEMPLATE    # API配置模板
         _function_config       # 函数配置参数
         _user_config           # 用户配置参数
+        Describe               # 服务描述
         
     Public methods for external use:
     供外部使用的公共方法：
         translate() -> str                        # 单个文本翻译
         translate_batch() -> List[Union[str,dict,List]]      # 批量文本翻译
         get_api_config_template() -> List[Dict[str, Any]]    # 获取API配置模板
+        get_service_description()                 # 获取服务描述
         get_function_config() -> Dict[str, Any]   # 获取函数配置
         update_function_config() -> None          # 更新函数配置
         get_user_config() -> Dict[str, Any]       # 获取用户配置
@@ -62,16 +60,17 @@ class BaseTranslator(ABC):
     # Function configuration, used for built-in text preprocessing methods, can be overridden by subclasses
     # 函数配置，用于使用内置的预处理文本方式，子类可以覆盖
     _function_config = {
-            'timeout': 30,
-            'retry_attempts': 3,
-            'rate_limit_delay': 1.0,
-            'batch_size': 10
-        }
+        
+    }
     
     # User configuration, similar to apikey, include other user configurations, can be overridden by subclasses
     # 用户配置，类似于apikey，包含其他的用户配置，子类可以覆盖
     _user_config = {}
     
+    # Describe translator, not called in class
+    # 描述内容，不在类中调用
+    Describe = "Base Translator"
+
     def __init__(self, api_config: Optional[dict] = None, **kwargs):
         """
         Initialize translator with API configuration and function configuration
@@ -202,6 +201,16 @@ class BaseTranslator(ABC):
             List of API configuration items / API配置项列表
         """
         return self.API_CONFIG_TEMPLATE.copy()
+
+    def get_service_description(self):
+        """
+        Get service description (read-only)
+        获取服务描述（只读）
+        
+        Returns:
+            Whatever you want to add / 你想添加的任何东西
+        """
+        return self.Describe.copy()
 
     def get_function_config(self) -> Dict[str, Any]:
         """
