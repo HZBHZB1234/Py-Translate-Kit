@@ -7,19 +7,42 @@ class BaseTranslator(ABC):
     Base class for all translators
     所有翻译器的基类
     
+    Abstract methods that subclasses must implement:
     以下是抽象方法，子类必须实现：
         _translate() -> str
-        
-        _translate_batch() -> Union[List[str],Dict]
+        _translate_batch() -> List[Union[str,dict,List]]
+    These two methods are the actual translation methods
     这两个方法为翻译实际方法
     
-    以下方法是可选的，子类建议覆盖：
-        参数：
-            API_CONFIG_TEMPLATE
-
-            _function_config
-
-            _user_config
+    Optional methods that subclasses can override (with default implementations in base class):
+    以下方法是可选的，子类可以覆盖（基类中已有默认实现）：
+        _preprocess_text() -> str                 # 单个文本预处理
+        _postprocess_text() -> str                # 单个文本后处理
+        _preprocess_batch() -> List[Union[str,dict,List]]    # 批量文本预处理
+        _postprocess_batch() -> List[Union[str,dict,List]]   # 批量文本后处理
+        _validate_config() -> None                # 配置验证
+        get_usage_info() -> Dict[str, Any]        # 获取使用信息
+        get_supported_languages() -> List[str]    # 获取支持的语言
+        validate_language() -> bool               # 验证语言代码
+        
+    Optional class attributes that subclasses can override:
+    以下类属性是可选的，子类可以覆盖：
+        API_CONFIG_TEMPLATE    # API配置模板
+        _function_config       # 函数配置参数
+        _user_config           # 用户配置参数
+        
+    Public methods for external use:
+    供外部使用的公共方法：
+        translate() -> str                        # 单个文本翻译
+        translate_batch() -> List[Union[str,dict,List]]      # 批量文本翻译
+        get_api_config_template() -> List[Dict[str, Any]]    # 获取API配置模板
+        get_function_config() -> Dict[str, Any]   # 获取函数配置
+        update_function_config() -> None          # 更新函数配置
+        get_user_config() -> Dict[str, Any]       # 获取用户配置
+        update_user_config() -> None              # 更新用户配置
+        update_api_config() -> None               # 更新API配置
+        get_supported_languages() -> List[str]    # 获取支持的语言
+        validate_language() -> bool               # 验证语言代码
     """
     
     # API configuration template, be used as reference, can be overridden by subclasses
@@ -32,7 +55,7 @@ class BaseTranslator(ABC):
         }
     ]
 
-    # Function configurationused, used for built-in text preprocessing methods, can be overridden by subclasses
+    # Function configuration, used for built-in text preprocessing methods, can be overridden by subclasses
     # 函数配置，用于使用内置的预处理文本方式，子类可以覆盖
     _function_config = {
             'timeout': 30,
@@ -44,6 +67,7 @@ class BaseTranslator(ABC):
     # User configuration, similar to apikey, include other user configurations, can be overridden by subclasses
     # 用户配置，类似于apikey，包含其他的用户配置，子类可以覆盖
     _user_config = {}
+    
     def __init__(self, api_config: Optional[dict] = None, **kwargs):
         """
         Initialize translator with API configuration and function configuration
@@ -55,7 +79,7 @@ class BaseTranslator(ABC):
         """
         self.api_config = api_config or {}
         self._function_config = {
-            **self._function_config
+            **self._function_config,
             **kwargs
         }
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -79,13 +103,13 @@ class BaseTranslator(ABC):
         pass
 
     @abstractmethod
-    def _translate_batch(self, texts: Union[List[str],Dict], src: str, dest: str, **kwargs) -> Union[List[str],Dict]:
+    def _translate_batch(self, texts: List[Union[str,dict,List]] , src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
         
         Args:
-            texts: List or Dict of texts to translate / 要翻译的文本列表或字典
+            texts: List of texts to translate / 要翻译的文本列表
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
             **kwargs: Configuration parameters / 配置参数
@@ -117,22 +141,22 @@ class BaseTranslator(ABC):
             **kwargs
         }
         
-        # 预处理文本
-        processed_text = self._preprocess_text(text)
+        # 预处理文本，传入配置参数
+        processed_text = self._preprocess_text(text, **config)
         
         # 执行翻译
         result = self._translate(processed_text, src, dest, **config)
         
-        # 后处理文本
-        return self._postprocess_text(result)
+        # 后处理文本，传入配置参数
+        return self._postprocess_text(result, **config)
 
-    def translate_batch(self, texts: Union[List[str],Dict], src: str, dest: str, **kwargs) -> Union[List[str],Dict]:
+    def translate_batch(self, texts: List[Union[str,dict,List]], src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
         
         Args:
-            texts: List or Dict of texts to translate / 要翻译的文本列表或字典
+            texts: List of texts to translate / 要翻译的文本列表
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
             **kwargs: Additional configuration parameters / 额外的配置参数
@@ -148,14 +172,14 @@ class BaseTranslator(ABC):
             **kwargs
         }
         
-        # 预处理文本
-        processed_texts = [self._preprocess_text(text) for text in texts]
+        # 批量预处理文本，使用专门的批量预处理方法
+        processed_texts = self._preprocess_batch(texts, **config)
         
         # 执行批量翻译
         results = self._translate_batch(processed_texts, src, dest, **config)
         
-        # 后处理文本
-        return [self._postprocess_text(result) for result in results]
+        # 批量后处理文本，使用专门的批量后处理方法
+        return self._postprocess_batch(results, **config)
 
     def get_api_config_template(self) -> List[Dict[str, Any]]:
         """
@@ -254,31 +278,63 @@ class BaseTranslator(ABC):
         if self._function_config.get('rate_limit_delay') < 0:
             raise ValueError("Rate limit delay cannot be negative / 速率限制延迟不能为负数")
 
-    def _preprocess_text(self, text: str) -> str:
+    def _preprocess_text(self, text: str, **kwargs) -> str:
         """
         Preprocess text before translation
         翻译前预处理文本
         
         Args:
             text: Input text / 输入文本
+            **kwargs: Configuration parameters / 配置参数
             
         Returns:
             Preprocessed text / 预处理后的文本
         """
         return text
 
-    def _postprocess_text(self, text: str) -> str:
+    def _postprocess_text(self, text: str, **kwargs) -> str:
         """
         Postprocess text after translation
         翻译后处理文本
         
         Args:
             text: Translated text / 翻译后的文本
+            **kwargs: Configuration parameters / 配置参数
             
         Returns:
             Postprocessed text / 后处理后的文本
         """
         return text
+
+    def _preprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+        """
+        Preprocess multiple texts before batch translation
+        批量翻译前预处理多个文本
+        
+        Args:
+            texts: List of texts to preprocess / 要预处理的文本列表
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            List of preprocessed texts / 预处理后的文本列表
+        """
+        # 默认实现：对每个文本单独调用_preprocess_text
+        return [self._preprocess_text(text, **kwargs) for text in texts]
+
+    def _postprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+        """
+        Postprocess multiple texts after batch translation
+        批量翻译后处理多个文本
+        
+        Args:
+            texts: List of translated texts to postprocess / 要后处理的翻译后文本列表
+            **kwargs: Configuration parameters / 配置参数
+            
+        Returns:
+            List of postprocessed texts / 后处理后的文本列表
+        """
+        # 默认实现：对每个文本单独调用_postprocess_text
+        return [self._postprocess_text(text, **kwargs) for text in texts]
 
     def get_usage_info(self) -> Dict[str, Any]:
         """
@@ -288,7 +344,7 @@ class BaseTranslator(ABC):
         Returns:
             Dictionary with usage information / 包含使用信息的字典
         """
-        pass
+        return {}
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(api_config_keys={list(self.api_config.keys())})"
