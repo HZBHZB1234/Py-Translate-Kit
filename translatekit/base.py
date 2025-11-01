@@ -5,28 +5,39 @@ import logging
 class BaseTranslator(ABC):
     """Base class for all translators / 所有翻译器的基类"""
     
-    def __init__(self, api_key: Optional[dict] = None, **kwargs):
+    # API configuration template, can be overridden by subclasses
+    # API配置模板，子类可以覆盖
+    API_CONFIG_TEMPLATE = [
+        {
+            "id": "apikey",
+            "describe": "API密钥",
+            "addition": {"type": "pwd"}
+        }
+    ]
+    
+    def __init__(self, api_config: Optional[dict] = None, **kwargs):
         """
-        Initialize translator with API key and configuration
-        使用API密钥和配置初始化翻译器
+        Initialize translator with API configuration and function configuration
+        使用API配置和函数配置初始化翻译器
         
         Args:
-            api_key: API key for translation service / 翻译服务的API密钥
-            **kwargs: Additional configuration parameters / 额外的配置参数
+            api_config: API configuration / API配置
+            **kwargs: Function configuration parameters / 函数配置参数
         """
-        self.api_key = api_key
-        self._config = {
+        self.api_config = api_config or {}
+        self._function_config = {
             'timeout': 30,
             'retry_attempts': 3,
             'rate_limit_delay': 1.0,
             'batch_size': 10,
             **kwargs
         }
+        self._user_config = {}
         self.logger = logging.getLogger(self.__class__.__name__)
         self._validate_config()
 
     @abstractmethod
-    def _translate(self, text: str, src: str, dest: str) -> str:
+    def _translate(self, text: str, src: str, dest: str, **kwargs) -> str:
         """
         Translate text from source language to destination language
         将文本从源语言翻译到目标语言
@@ -35,6 +46,7 @@ class BaseTranslator(ABC):
             text: Text to translate / 要翻译的文本
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
+            **kwargs: Configuration parameters / 配置参数
             
         Returns:
             Translated text / 翻译后的文本
@@ -42,7 +54,7 @@ class BaseTranslator(ABC):
         pass
 
     @abstractmethod
-    def _translate_batch(self, texts: List[str], src: str, dest: str) -> List[str]:
+    def _translate_batch(self, texts: List[str], src: str, dest: str, **kwargs) -> List[str]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
@@ -51,13 +63,14 @@ class BaseTranslator(ABC):
             texts: List of texts to translate / 要翻译的文本列表
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
+            **kwargs: Configuration parameters / 配置参数
             
         Returns:
             List of translated texts / 翻译后的文本列表
         """
         pass
-    @abstractmethod
-    def translate(self, text: str, src: str, dest: str) -> str:
+
+    def translate(self, text: str, src: str, dest: str, **kwargs) -> str:
         """
         Translate text from source language to destination language
         将文本从源语言翻译到目标语言
@@ -66,14 +79,29 @@ class BaseTranslator(ABC):
             text: Text to translate / 要翻译的文本
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
+            **kwargs: Additional configuration parameters / 额外的配置参数
             
         Returns:
             Translated text / 翻译后的文本
         """
-        pass
+        # 合并所有配置
+        config = {
+            **self._function_config,
+            **self.api_config,
+            **self._user_config,
+            **kwargs
+        }
+        
+        # 预处理文本
+        processed_text = self._preprocess_text(text)
+        
+        # 执行翻译
+        result = self._translate(processed_text, src, dest, **config)
+        
+        # 后处理文本
+        return self._postprocess_text(result)
 
-    @abstractmethod
-    def translate_batch(self, texts: List[str], src: str, dest: str) -> List[str]:
+    def translate_batch(self, texts: List[str], src: str, dest: str, **kwargs) -> List[str]:
         """
         Translate multiple texts in batch
         批量翻译多个文本
@@ -82,43 +110,89 @@ class BaseTranslator(ABC):
             texts: List of texts to translate / 要翻译的文本列表
             src: Source language code / 源语言代码
             dest: Destination language code / 目标语言代码
+            **kwargs: Additional configuration parameters / 额外的配置参数
             
         Returns:
             List of translated texts / 翻译后的文本列表
         """
-        pass
+        # 合并所有配置
+        config = {
+            **self._function_config,
+            **self.api_config,
+            **self._user_config,
+            **kwargs
+        }
+        
+        # 预处理文本
+        processed_texts = [self._preprocess_text(text) for text in texts]
+        
+        # 执行批量翻译
+        results = self._translate_batch(processed_texts, src, dest, **config)
+        
+        # 后处理文本
+        return [self._postprocess_text(result) for result in results]
 
-    def config(self) -> Dict[str, Any]:
+    def get_api_config_template(self) -> List[Dict[str, Any]]:
         """
-        Get current configuration
-        获取当前配置
+        Get API configuration template (read-only)
+        获取API配置模板（只读）
         
         Returns:
-            Dictionary containing current configuration / 包含当前配置的字典
+            List of API configuration items / API配置项列表
         """
-        return self._config.copy()
+        return self.API_CONFIG_TEMPLATE.copy()
 
-    def update_config(self, **kwargs) -> None:
+    def get_function_config(self) -> Dict[str, Any]:
         """
-        Update configuration parameters
-        更新配置参数
+        Get current function configuration
+        获取当前函数配置
+        
+        Returns:
+            Dictionary containing function configuration / 包含函数配置的字典
+        """
+        return self._function_config.copy()
+
+    def update_function_config(self, **kwargs) -> None:
+        """
+        Update function configuration parameters
+        更新函数配置参数
         
         Args:
-            **kwargs: Configuration parameters to update / 要更新的配置参数
+            **kwargs: Function configuration parameters to update / 要更新的函数配置参数
         """
-        self._config.update(kwargs)
+        self._function_config.update(kwargs)
         self._validate_config()
 
-    def set_api_key(self, api_key: str) -> None:
+    def get_user_config(self) -> Dict[str, Any]:
         """
-        Set or update API key
-        设置或更新API密钥
+        Get current user configuration
+        获取当前用户配置
+        
+        Returns:
+            Dictionary containing user configuration / 包含用户配置的字典
+        """
+        return self._user_config.copy()
+
+    def update_user_config(self, **kwargs) -> None:
+        """
+        Update user configuration parameters
+        更新用户配置参数
         
         Args:
-            api_key: New API key / 新的API密钥
+            **kwargs: User configuration parameters to update / 要更新的用户配置参数
         """
-        self.api_key = api_key
-        self.logger.info("API key updated / API密钥已更新")
+        self._user_config.update(kwargs)
+
+    def update_api_config(self, **kwargs) -> None:
+        """
+        Update API configuration parameters
+        更新API配置参数
+        
+        Args:
+            **kwargs: API configuration parameters to update / 要更新的API配置参数
+        """
+        self.api_config.update(kwargs)
+        self.logger.info("API configuration updated / API配置已更新")
 
     def get_supported_languages(self) -> List[str]:
         """
@@ -145,14 +219,14 @@ class BaseTranslator(ABC):
 
     def _validate_config(self) -> None:
         """
-        Validate configuration parameters
-        验证配置参数
+        Validate function configuration parameters
+        验证函数配置参数
         """
-        if self._config.get('timeout') <= 0:
+        if self._function_config.get('timeout') <= 0:
             raise ValueError("Timeout must be positive / 超时时间必须为正数")
-        if self._config.get('retry_attempts') < 0:
+        if self._function_config.get('retry_attempts') < 0:
             raise ValueError("Retry attempts cannot be negative / 重试次数不能为负数")
-        if self._config.get('rate_limit_delay') < 0:
+        if self._function_config.get('rate_limit_delay') < 0:
             raise ValueError("Rate limit delay cannot be negative / 速率限制延迟不能为负数")
 
     def _preprocess_text(self, text: str) -> str:
@@ -181,14 +255,6 @@ class BaseTranslator(ABC):
         """
         return text.strip()
 
-    def _check_api_key(self) -> None:
-        """
-        Check if API key is set
-        检查API密钥是否已设置
-        """
-        if not self.api_key:
-            raise ValueError("API key is required but not set / API密钥是必需的但未设置")
-
     @abstractmethod
     def get_usage_info(self) -> Dict[str, Any]:
         """
@@ -201,4 +267,4 @@ class BaseTranslator(ABC):
         pass
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(api_key={'***' if self.api_key else None})"
+        return f"{self.__class__.__name__}(api_config_keys={list(self.api_config.keys())})"
