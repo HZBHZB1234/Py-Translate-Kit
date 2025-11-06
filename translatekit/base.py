@@ -1,821 +1,797 @@
-from abc import ABC, abstractmethod
-from typing import List, Optional, Union, Dict, Any, Callable
+"""
+translator/base.py
+
+翻译器基类，提供统一的翻译接口和可扩展的架构。
+"""
+
+import abc
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from queue import Queue
-import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Union, Callable, Any, Tuple
+from functools import wraps
+from dataclasses import dataclass
+from enum import Enum
 
-class BaseTranslator(ABC):
+# 自定义异常
+class TranslationError(Exception):
+    """翻译相关异常基类"""
+    pass
+
+class ConfigurationError(TranslationError):
+    """配置错误"""
+    pass
+
+class APIError(TranslationError):
+    """API调用错误"""
+    pass
+
+# 配置相关枚举和数据结构
+class SplitStrategy(Enum):
+    SENTENCE = "sentence"
+    PARAGRAPH = "paragraph" 
+    FIXED_LENGTH = "fixed_length"
+    SEMANTIC = "semantic"
+
+class RetryStrategy(Enum):
+    EXPONENTIAL = "exponential"
+    LINEAR = "linear"
+    ADAPTIVE = "adaptive"
+
+@dataclass
+class TranslationConfig:
+    """翻译配置数据类"""
+    # API配置
+    api_key: Dict[str, str] = None
+    
+    # 翻译参数
+    source_lang: str = "auto"
+    target_lang: str = "en"
+    
+    # 文本处理
+    text_max_length: int = 2000
+    split_strategy: SplitStrategy = SplitStrategy.SENTENCE
+    enable_preprocessing: bool = True
+    enable_postprocessing: bool = True
+    
+    # 重试与容错
+    max_retries: int = 3
+    retry_strategy: RetryStrategy = RetryStrategy.EXPONENTIAL
+    timeout: float = 30.0
+    
+    # 并发设置
+    max_workers: int = 5
+    batch_size: int = 10
+    
+    # 高级功能
+    enable_cache: bool = False
+    cache_size: int = 1000
+    enable_metrics: bool = False
+    debug_mode: bool = False
+
+    def __post_init__(self):
+        if self.api_key is None:
+            self.api_key = {}
+
+class TranslatorBase(abc.ABC):
     """
-    Base class for all translators
-    所有翻译器的基类
+    翻译器基类，提供统一的翻译接口和可扩展架构。
     
-    Abstract methods that subclasses must implement:
-    以下是抽象方法，子类必须实现：
-        _translate() -> str
-        _translate_batch() -> List[Union[str,dict,List]]
-    These two methods are the actual translation methods
-    这两个方法为翻译实际方法
-    
-    Optional methods that subclasses can override (with default implementations in base class):
-    以下方法是可选的，子类可以覆盖（基类中已有默认实现）：
-        _preprocess_text() -> str                      # 子类单个文本预处理
-        _postprocess_text() -> str                     # 子类单个文本后处理
-        _preprocess_batch() -> List[Union[str,dict,List]]    # 子类批量文本预处理
-        _postprocess_batch() -> List[Union[str,dict,List]]   # 子类批量文本后处理
-        _validate_config() -> None                     # 配置验证
-        get_usage_info() -> Dict[str, Any]             # 获取使用信息
-        get_supported_languages() -> List[str]         # 获取支持的语言
-        validate_language() -> bool                    # 验证语言代码
-        
-        # 新增的高级处理方法
-        _handle_single_text() -> str                   # 单个文本高级处理
-        _handle_batch_texts() -> List[Union[str,dict,List]] # 批量文本高级处理
-        _split_long_text() -> List[str]                # 长文本分割
-        _merge_split_results() -> str                  # 分割结果合并
-        
-    Optional class attributes that subclasses can override:
-    以下类属性是可选的，子类可以覆盖：
-        API_CONFIG_TEMPLATE    # API配置模板
-        _function_config       # 函数配置参数
-        _user_config           # 用户配置参数
-        Describe               # 服务描述
-        
-    Public methods for external use:
-    供外部使用的公共方法：
-        translate() -> str                        # 单个文本翻译
-        translate_batch() -> List[Union[str,dict,List]]      # 批量文本翻译
-        get_api_config_template() -> List[Dict[str, Any]]    # 获取API配置模板
-        get_service_description()                 # 获取服务描述
-        get_function_config() -> Dict[str, Any]   # 获取函数配置
-        update_function_config() -> None          # 更新函数配置
-        get_user_config() -> Dict[str, Any]       # 获取用户配置
-        update_user_config() -> None              # 更新用户配置
-        update_api_config() -> None               # 更新API配置
-        get_supported_languages() -> List[str]    # 获取支持的语言
-        validate_language() -> bool               # 验证语言代码
+    设计原则：
+    1. 开箱即用：提供合理的默认配置
+    2. 高度可扩展：通过继承和配置支持深度定制
+    3. 性能优化：内置并发、缓存、重试等机制
+    4. 错误恢复：多层次错误处理和降级策略
     """
     
-    # API configuration template, be used as reference, can be overridden by subclasses
-    # API配置模板，将会作为参考，子类可以覆盖
-    API_CONFIG_TEMPLATE = [
-        {
-            "id": "apikey",
-            "describe": "API密钥",
-            "addition": {"type": "pwd"}
-        }
-    ]
-
-    # Function configuration, used for built-in text preprocessing methods, can be overridden by subclasses
-    # 函数配置，用于使用内置的预处理文本方式，子类可以覆盖
-    _function_config = {
-        'max_text_length': 5000,           # 最大文本长度
-        'split_strategy': 'sentence',      # 分割策略：sentence/paragraph/fixed
-        'split_separators': ['.', '。', '!', '！', '?', '？', '\n\n'],  # 分割分隔符
-        'chunk_size': 500,                 # 固定分割时的块大小
-        'overlap_size': 50,                # 分割重叠大小
-        'max_workers': 3,                  # 线程池最大工作线程数
-        'max_retries': 3,                  # 最大重试次数
-        'retry_delay': 1,                  # 重试延迟（秒）
-        'request_timeout': 30,             # 请求超时时间
-        'rate_limit_per_second': 5,        # 每秒请求限制
-    }
+    # 类属性：服务元信息（子类应覆盖）
+    SERVICE_NAME = "base_translator"
+    SUPPORTED_LANGUAGES = {}  # {'en': 'English', 'zh': 'Chinese'}
+    DEFAULT_CONFIG = TranslationConfig()
     
-    # User configuration, similar to apikey, include other user configurations, can be overridden by subclasses
-    # 用户配置，类似于apikey，包含其他的用户配置，子类可以覆盖
-    _user_config = {}
+    def __init__(self, config: Optional[TranslationConfig] = None, **kwargs):
+        """
+        初始化翻译器
+        
+        Args:
+            config: 翻译配置对象
+            **kwargs: 支持直接传入配置参数
+        """
+        # 合并配置
+        self.config = config or self.DEFAULT_CONFIG
+        
+        # 初始化组件
+        self.logger = self._setup_logger()
+        self._thread_local = threading.local()
+        self._cache = {} if self.config.enable_cache else None
+        self._metrics = {} if self.config.enable_metrics else None
+        self._executor = None
+        
+        if kwargs:
+            self._update_config_from_kwargs(kwargs)
+        
+        # 验证配置
+        self.validate_config()
+        
+        self.logger.info(f"{self.SERVICE_NAME} 初始化完成")
+
+    # ==================== 核心翻译接口 ====================
     
-    # Describe translator, not called in class
-    # 描述内容，不在类中调用
-    Describe = "Base Translator"
-    
-    # 线程池和重试池相关属性
-    _thread_pool = None
-    _request_queue = Queue()
-    _rate_limiter = None
-
-    def __init__(self, api_config: Optional[dict] = None, **kwargs):
+    def translate(self, text: Union[str, List, Dict], 
+                  source_lang: Optional[str] = None,
+                  target_lang: Optional[str] = None,
+                  **kwargs) -> Union[str, List, Dict]:
         """
-        Initialize translator with API configuration and function configuration
-        使用API配置和函数配置初始化翻译器
+        智能翻译主接口，自动选择最佳处理策略
         
         Args:
-            api_config: API configuration / API配置
-            **kwargs: Function configuration parameters / 函数配置参数
-        """
-        self.api_config = api_config or {}
-        self._function_config = {
-            **self._function_config,
-            **kwargs
-        }
-        self.logger = logging.getLogger(self.__class__.__name__)
-        
-        # 初始化线程池
-        self._init_thread_pool()
-        
-        # 初始化速率限制器
-        self._init_rate_limiter()
-        
-        self._validate_config()
-
-    def _init_thread_pool(self):
-        """初始化线程池"""
-        max_workers = self._function_config.get('max_workers', 3)
-        if self._thread_pool is None:
-            self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
-
-    def _init_rate_limiter(self):
-        """初始化速率限制器"""
-        self._last_request_time = 0
-        self._request_lock = threading.Lock()
-
-    def _apply_rate_limit(self):
-        """应用速率限制"""
-        rate_limit = self._function_config.get('rate_limit_per_second', 5)
-        if rate_limit <= 0:
-            return
-            
-        min_interval = 1.0 / rate_limit
-        
-        with self._request_lock:
-            current_time = time.time()
-            time_since_last = current_time - self._last_request_time
-            
-            if time_since_last < min_interval:
-                sleep_time = min_interval - time_since_last
-                time.sleep(sleep_time)
-                
-            self._last_request_time = time.time()
-
-    @abstractmethod
-    def _translate(self, text: str, src: str, dest: str, **kwargs) -> str:
-        """
-        Translate text from source language to destination language
-        将文本从源语言翻译到目标语言
-        
-        Args:
-            text: Text to translate / 要翻译的文本
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Configuration parameters / 配置参数
+            text: 输入文本，支持字符串、列表、字典
+            source_lang: 源语言，默认使用配置
+            target_lang: 目标语言，默认使用配置
+            **kwargs: 额外参数
             
         Returns:
-            Translated text / 翻译后的文本
+            翻译结果，保持输入格式
         """
-        pass
-
-    @abstractmethod
-    def _translate_batch(self, texts: List[Union[str,dict,List]] , src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
-        """
-        Translate multiple texts in batch
-        批量翻译多个文本
+        source_lang = source_lang or self.config.source_lang
+        target_lang = target_lang or self.config.target_lang
         
-        Args:
-            texts: List of texts to translate / 要翻译的文本列表
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            List of translated texts / 翻译后的文本列表
-        """
-        pass
-
-    def translate(self, text: str, src: str, dest: str, **kwargs) -> str:
-        """
-        Translate text from source language to destination language
-        将文本从源语言翻译到目标语言
+        # 验证语言
+        self._validate_languages(source_lang, target_lang)
         
-        Args:
-            text: Text to translate / 要翻译的文本
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Additional configuration parameters / 额外的配置参数
-            
-        Returns:
-            Translated text / 翻译后的文本
-        """
-        # 合并所有配置
-        config = {
-            **self._function_config,
-            **self.api_config,
-            **self._user_config,
-            **kwargs
-        }
-        
-        # 使用高级处理机制处理单个文本
-        def translation_work():
-            # 预处理文本：先进行基类内建预处理，再进行子类预处理
-            base_processed_text = self._builtin_preprocess_text(text, **config)
-            processed_text = self._preprocess_text(base_processed_text, **config)
-            
-            # 执行翻译
-            result = self._translate(processed_text, src, dest, **config)
-            
-            # 后处理文本：先进行子类后处理，再进行基类内建后处理
-            subclass_processed_result = self._postprocess_text(result, **config)
-            final_result = self._builtin_postprocess_text(subclass_processed_result, **config)
-            
-            return final_result
-        
-        # 调用高级处理方法
-        return self._handle_single_text(translation_work, text, src, dest, **config)
-
-    def translate_batch(self, texts: List[Union[str,dict,List]], src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
-        """
-        Translate multiple texts in batch
-        批量翻译多个文本
-        
-        Args:
-            texts: List of texts to translate / 要翻译的文本列表
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Additional configuration parameters / 额外的配置参数
-            
-        Returns:
-            List of translated texts / 翻译后的文本列表
-        """
-        # 合并所有配置
-        config = {
-            **self._function_config,
-            **self.api_config,
-            **self._user_config,
-            **kwargs
-        }
-        
-        # 使用高级处理机制处理批量文本
-        def batch_translation_work():
-            # 批量预处理：先进行基类内建批量预处理，再进行子类批量预处理
-            base_processed_texts = self._builtin_preprocess_batch(texts, **config)
-            processed_texts = self._preprocess_batch(base_processed_texts, **config)
-            
-            # 执行批量翻译
-            results = self._translate_batch(processed_texts, src, dest, **config)
-            
-            # 批量后处理：先进行子类批量后处理，再进行基类内建批量后处理
-            subclass_processed_results = self._postprocess_batch(results, **config)
-            final_results = self._builtin_postprocess_batch(subclass_processed_results, **config)
-            
-            return final_results
-        
-        # 调用高级批量处理方法
-        return self._handle_batch_texts(batch_translation_work, texts, src, dest, **config)
-
-    def _handle_single_text(self, translation_func: Callable, text: str, src: str, dest: str, **kwargs) -> str:
-        """
-        Advanced handling for single text translation with retry, rate limiting, and text splitting
-        单个文本翻译的高级处理，包括重试、速率限制和文本分割
-        
-        Args:
-            translation_func: Translation function to execute / 要执行的翻译函数
-            text: Text to translate / 要翻译的文本
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            Translated text / 翻译后的文本
-        """
-        max_retries = kwargs.get('max_retries', 3)
-        max_text_length = kwargs.get('max_text_length', 5000)
-        
-        # 检查文本长度，决定是否需要分割
-        if len(text) > max_text_length:
-            self.logger.info(f"Text too long ({len(text)} chars), splitting into chunks")
-            return self._handle_long_text(translation_func, text, src, dest, **kwargs)
-        
-        # 正常长度的文本处理（带重试机制）
-        last_exception = None
-        for attempt in range(max_retries + 1):
-            try:
-                # 应用速率限制
-                self._apply_rate_limit()
-                
-                # 执行翻译
-                return translation_func()
-                
-            except Exception as e:
-                last_exception = e
-                self.logger.warning(f"Translation attempt {attempt + 1} failed: {str(e)}")
-                
-                if attempt < max_retries:
-                    retry_delay = kwargs.get('retry_delay', 1)
-                    time.sleep(retry_delay * (attempt + 1))  # 递增延迟
-                else:
-                    self.logger.error(f"All {max_retries} retry attempts failed")
-                    raise last_exception
-        
-        # 理论上不会执行到这里
-        raise last_exception
-
-    def _handle_batch_texts(self, translation_func: Callable, texts: List[Union[str,dict,List]], 
-                           src: str, dest: str, **kwargs) -> List[Union[str,dict,List]]:
-        """
-        Advanced handling for batch translation with parallel processing and error handling
-        批量翻译的高级处理，包括并行处理和错误处理
-        
-        Args:
-            translation_func: Batch translation function to execute / 要执行的批量翻译函数
-            texts: List of texts to translate / 要翻译的文本列表
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            List of translated texts / 翻译后的文本列表
-        """
-        max_workers = kwargs.get('max_workers', 3)
-        use_parallel = kwargs.get('use_parallel', True) and len(texts) > 1
-        
-        if not use_parallel or max_workers <= 1:
-            # 串行处理
-            return translation_func()
-        
-        # 并行处理
-        self._init_thread_pool()
-        
-        # 将批量任务拆分为单个任务并行执行
-        def single_translation_wrapper(index, single_text):
-            def work():
-                # 应用速率限制
-                self._apply_rate_limit()
-                return self.translate(single_text, src, dest, **kwargs)
-            return index, work
-        
-        # 准备任务
-        tasks = []
-        for i, text_item in enumerate(texts):
-            if isinstance(text_item, dict):
-                text_to_translate = text_item.get('text', '')
-            elif isinstance(text_item, list):
-                text_to_translate = ' '.join(str(x) for x in text_item)
-            else:
-                text_to_translate = str(text_item)
-                
-            tasks.append(single_translation_wrapper(i, text_to_translate))
-        
-        # 提交任务到线程池
-        futures = []
-        for task in tasks:
-            index, work_func = task
-            future = self._thread_pool.submit(work_func)
-            futures.append((index, future))
-        
-        # 收集结果
-        results = [None] * len(texts)
-        successful_count = 0
-        
-        for index, future in futures:
-            try:
-                result = future.result(timeout=kwargs.get('request_timeout', 30))
-                results[index] = result
-                successful_count += 1
-            except Exception as e:
-                self.logger.error(f"Failed to translate text at index {index}: {str(e)}")
-                # 保留原始文本或设置错误标记
-                if isinstance(texts[index], dict):
-                    results[index] = {**texts[index], 'translation_error': str(e)}
-                else:
-                    results[index] = f"Translation Error: {str(e)}"
-        
-        self.logger.info(f"Batch translation completed: {successful_count}/{len(texts)} successful")
-        return results
-
-    def _handle_long_text(self, translation_func: Callable, text: str, src: str, dest: str, **kwargs) -> str:
-        """
-        Handle long text by splitting, translating chunks, and merging results
-        处理长文本：分割、翻译分块、合并结果
-        
-        Args:
-            translation_func: Translation function for chunks / 用于分块翻译的函数
-            text: Long text to translate / 要翻译的长文本
-            src: Source language code / 源语言代码
-            dest: Destination language code / 目标语言代码
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            Merged translated text / 合并后的翻译文本
-        """
-        # 分割文本
-        chunks = self._split_long_text(text, **kwargs)
-        self.logger.info(f"Split long text into {len(chunks)} chunks")
-        
-        # 翻译各个分块
-        translated_chunks = []
-        for i, chunk in enumerate(chunks):
-            self.logger.debug(f"Translating chunk {i+1}/{len(chunks)}")
-            
-            def chunk_translation():
-                return self._handle_single_text(
-                    lambda: self._translate(chunk, src, dest, **kwargs),
-                    chunk, src, dest, **kwargs
-                )
-            
-            try:
-                translated_chunk = chunk_translation()
-                translated_chunks.append(translated_chunk)
-            except Exception as e:
-                self.logger.error(f"Failed to translate chunk {i+1}: {str(e)}")
-                # 对于失败的分块，保留原文或添加错误标记
-                translated_chunks.append(f"[Translation Error: {str(e)}]")
-        
-        # 合并翻译结果
-        merged_result = self._merge_split_results(translated_chunks, **kwargs)
-        return merged_result
-
-    def _split_long_text(self, text: str, **kwargs) -> List[str]:
-        """
-        Split long text into manageable chunks based on strategy
-        根据策略将长文本分割为可管理的分块
-        
-        Args:
-            text: Text to split / 要分割的文本
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            List of text chunks / 文本分块列表
-        """
-        strategy = kwargs.get('split_strategy', 'sentence')
-        chunk_size = kwargs.get('chunk_size', 500)
-        overlap_size = kwargs.get('overlap_size', 50)
-        separators = kwargs.get('split_separators', ['.', '。', '!', '！', '?', '？', '\n\n'])
-        
-        if strategy == 'fixed':
-            # 固定长度分割
-            return self._split_by_fixed_length(text, chunk_size, overlap_size)
-        elif strategy == 'sentence':
-            # 按句子分割
-            return self._split_by_sentences(text, separators, chunk_size)
-        elif strategy == 'paragraph':
-            # 按段落分割
-            return self._split_by_paragraphs(text, chunk_size)
-        else:
-            # 默认使用句子分割
-            return self._split_by_sentences(text, separators, chunk_size)
-
-    def _split_by_fixed_length(self, text: str, chunk_size: int, overlap_size: int) -> List[str]:
-        """按固定长度分割文本"""
-        chunks = []
-        start = 0
-        text_length = len(text)
-        
-        while start < text_length:
-            end = min(start + chunk_size, text_length)
-            
-            # 如果不在文本末尾，尝试在句子边界处分割
-            if end < text_length:
-                # 查找合适的分割点
-                for separator in ['.', '。', '!', '！', '?', '？', ' ', '\n']:
-                    last_sep_pos = text.rfind(separator, start, end)
-                    if last_sep_pos != -1 and last_sep_pos > start + chunk_size // 2:
-                        end = last_sep_pos + len(separator)
-                        break
-            
-            chunks.append(text[start:end])
-            start = end - overlap_size  # 应用重叠
-            
-            if start >= text_length:
-                break
-        
-        return chunks
-
-    def _split_by_sentences(self, text: str, separators: List[str], max_chunk_size: int) -> List[str]:
-        """按句子分割文本"""
-        if not separators:
-            separators = ['.', '。', '!', '！', '?', '？']
-        
-        # 构建正则表达式模式来匹配句子分隔符
-        pattern = '|'.join(re.escape(sep) for sep in separators)
-        sentences = re.split(f'({pattern})', text)
-        
-        # 重新组合句子，考虑最大块大小
-        chunks = []
-        current_chunk = ""
-        
-        i = 0
-        while i < len(sentences):
-            sentence = sentences[i]
-            
-            # 如果当前块加上新句子不会超过限制，或者当前块为空
-            if len(current_chunk) + len(sentence) <= max_chunk_size or not current_chunk:
-                current_chunk += sentence
-                i += 1
-            else:
-                # 当前块已满，开始新块
-                if current_chunk.strip():
-                    chunks.append(current_chunk.strip())
-                current_chunk = sentence
-                i += 1
-        
-        # 添加最后一个块
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-        
-        return chunks
-
-    def _split_by_paragraphs(self, text: str, max_chunk_size: int) -> List[str]:
-        """按段落分割文本"""
-        paragraphs = text.split('\n\n')
-        chunks = []
-        current_chunk = ""
-        
-        for paragraph in paragraphs:
-            # 如果当前块加上新段落不会超过限制，或者当前块为空
-            if len(current_chunk) + len(paragraph) <= max_chunk_size or not current_chunk:
-                if current_chunk:
-                    current_chunk += '\n\n'
-                current_chunk += paragraph
-            else:
-                # 当前块已满，开始新块
-                if current_chunk.strip():
-                    chunks.append(current_chunk.strip())
-                current_chunk = paragraph
-        
-        # 添加最后一个块
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-        
-        return chunks
-
-    def _merge_split_results(self, translated_chunks: List[str], **kwargs) -> str:
-        """
-        Merge translated chunks back into a coherent text
-        将翻译后的分块合并为连贯的文本
-        
-        Args:
-            translated_chunks: List of translated chunks / 翻译后的分块列表
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            Merged text / 合并后的文本
-        """
-        # 简单的合并策略：用空格连接
-        # 子类可以覆盖此方法实现更复杂的合并逻辑
-        return ' '.join(translated_chunks)
-
-    def get_api_config_template(self) -> List[Dict[str, Any]]:
-        """
-        Get API configuration template (read-only)
-        获取API配置模板（只读）
-        
-        Returns:
-            List of API configuration items / API配置项列表
-        """
-        return self.API_CONFIG_TEMPLATE.copy()
-
-    def get_service_description(self):
-        """
-        Get service description (read-only)
-        获取服务描述（只读）
-        
-        Returns:
-            Whatever you want to add / 你想添加的任何东西
-        """
-        return self.Describe
-
-    def get_function_config(self) -> Dict[str, Any]:
-        """
-        Get current function configuration
-        获取当前函数配置
-        
-        Returns:
-            Dictionary containing function configuration / 包含函数配置的字典
-        """
-        return self._function_config.copy()
-
-    def update_function_config(self, **kwargs) -> None:
-        """
-        Update function configuration parameters
-        更新函数配置参数
-        
-        Args:
-            **kwargs: Function configuration parameters to update / 要更新的函数配置参数
-        """
-        self._function_config.update(kwargs)
-        
-        # 如果线程池配置发生变化，重新初始化
-        if 'max_workers' in kwargs:
-            if self._thread_pool:
-                self._thread_pool.shutdown(wait=True)
-                self._thread_pool = None
-            self._init_thread_pool()
-            
-        self._validate_config()
-
-    def get_user_config(self) -> Dict[str, Any]:
-        """
-        Get current user configuration
-        获取当前用户配置
-        
-        Returns:
-            Dictionary containing user configuration / 包含用户配置的字典
-        """
-        return self._user_config.copy()
-
-    def update_user_config(self, **kwargs) -> None:
-        """
-        Update user configuration parameters
-        更新用户配置参数
-        
-        Args:
-            **kwargs: User configuration parameters to update / 要更新的用户配置参数
-        """
-        self._user_config.update(kwargs)
-
-    def update_api_config(self, **kwargs) -> None:
-        """
-        Update API configuration parameters
-        更新API配置参数
-        
-        Args:
-            **kwargs: API configuration parameters to update / 要更新的API配置参数
-        """
-        self.api_config.update(kwargs)
-        self.logger.info("API configuration updated / API配置已更新")
-
-    def get_supported_languages(self) -> List[str]:
-        """
-        Get list of supported language codes
-        获取支持的语言代码列表
-        
-        Returns:
-            List of supported language codes / 支持的语言代码列表
-        """
-        return ['en', 'zh', 'es', 'fr', 'de', 'ja', 'ko', 'ru']
-
-    def validate_language(self, lang: str) -> bool:
-        """
-        Validate if language code is supported
-        验证语言代码是否受支持
-        
-        Args:
-            lang: Language code to validate / 要验证的语言代码
-            
-        Returns:
-            True if language is supported / 如果语言受支持则返回True
-        """
-        return lang in self.get_supported_languages()
-
-    def _validate_config(self) -> None:
-        """
-        Validate function configuration parameters
-        验证函数配置参数
-        """
-        if self._function_config.get('timeout', 30) <= 0:
-            raise ValueError("Timeout must be positive / 超时时间必须为正数")
-        if self._function_config.get('retry_attempts', 3) < 0:
-            raise ValueError("Retry attempts cannot be negative / 重试次数不能为负数")
-        if self._function_config.get('rate_limit_delay', 0) < 0:
-            raise ValueError("Rate limit delay cannot be negative / 速率限制延迟不能为负数")
-        if self._function_config.get('max_text_length', 5000) <= 0:
-            raise ValueError("Max text length must be positive / 最大文本长度必须为正数")
-        if self._function_config.get('max_workers', 3) <= 0:
-            raise ValueError("Max workers must be positive / 最大工作线程数必须为正数")
-
-    def _builtin_preprocess_text(self, text: str, **kwargs) -> str:
-        """
-        Base class built-in text preprocessing before translation
-        翻译前基类内建文本预处理
-        
-        Args:
-            text: Input text / 输入文本
-            **kwargs: Configuration parameters / 配置参数
-            
-        Returns:
-            Preprocessed text / 预处理后的文本
-        """
-        # 基类内建预处理逻辑
-        # 例如：去除多余空格、标准化换行符等
+        # 根据输入类型选择处理方式
         if isinstance(text, str):
-            text = text.strip()
-        return text
+            return self._translate_single(text, source_lang, target_lang, **kwargs)
+        elif isinstance(text, list):
+            return self._translate_batch(text, source_lang, target_lang, **kwargs)
+        elif isinstance(text, dict):
+            return self._translate_dict(text, source_lang, target_lang, **kwargs)
+        else:
+            raise ValueError(f"不支持的文本类型: {type(text)}")
 
-    def _builtin_postprocess_text(self, text: str, **kwargs) -> str:
+    def translate_batch(self, texts: List[str],
+                        source_lang: Optional[str] = None,
+                        target_lang: Optional[str] = None,
+                        **kwargs) -> List[str]:
         """
-        Base class built-in text postprocessing after translation
-        翻译后基类内建文本后处理
+        批量翻译接口
         
         Args:
-            text: Translated text / 翻译后的文本
-            **kwargs: Configuration parameters / 配置参数
+            texts: 文本列表
+            source_lang: 源语言
+            target_lang: 目标语言
+            **kwargs: 额外参数
             
         Returns:
-            Postprocessed text / 后处理后的文本
+            翻译结果列表
         """
-        # 基类内建后处理逻辑
-        # 例如：确保输出为字符串、处理特殊字符等
-        if not isinstance(text, str):
-            text = str(text)
-        return text
+        return self.translate(texts, source_lang, target_lang, **kwargs)
 
-    def _builtin_preprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+    def translate_with_strategy(self, text: str,
+                                strategy: str = 'auto',
+                                source_lang: Optional[str] = None,
+                                target_lang: Optional[str] = None,
+                                **kwargs) -> str:
         """
-        Base class built-in batch preprocessing before translation
-        翻译前基类内建批量预处理
+        指定策略的翻译接口（高级功能）
         
         Args:
-            texts: List of texts to preprocess / 要预处理的文本列表
-            **kwargs: Configuration parameters / 配置参数
+            text: 输入文本
+            strategy: 翻译策略 ('raw', 'chunk', 'parallel', 'auto')
+            source_lang: 源语言
+            target_lang: 目标语言
+            **kwargs: 额外参数
             
         Returns:
-            List of preprocessed texts / 预处理后的文本列表
+            翻译结果
         """
-        # 默认实现：对每个文本单独调用_builtin_preprocess_text
-        return [self._builtin_preprocess_text(text, **kwargs) for text in texts]
+        source_lang = source_lang or self.config.source_lang
+        target_lang = target_lang or self.config.target_lang
+        
+        if strategy == 'raw':
+            return self._translate_single_raw(text, source_lang, target_lang, **kwargs)
+        elif strategy == 'chunk':
+            return self._translate_chunked(text, source_lang, target_lang, **kwargs)
+        elif strategy == 'parallel':
+            return self._translate_parallel([text], source_lang, target_lang, **kwargs)[0]
+        else:  # auto
+            return self._translate_single(text, source_lang, target_lang, **kwargs)
 
-    def _builtin_postprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
+    # ==================== 文本处理管道 ====================
+    
+    def get_text_processing_pipeline(self) -> List[Callable]:
         """
-        Base class built-in batch postprocessing after translation
-        翻译后基类内建批量后处理
+        获取文本处理管道，子类可覆盖以重新定义流程
+        
+        Returns:
+            处理函数列表
+        """
+        return [
+            self._preprocess_text,
+            self._split_long_text,
+            self._apply_translation,
+            self._merge_translated_texts,
+            self._postprocess_text
+        ]
+
+    def execute_pipeline(self, text: str, **kwargs) -> str:
+        """
+        执行文本处理管道
         
         Args:
-            texts: List of translated texts to postprocess / 要后处理的翻译后文本列表
-            **kwargs: Configuration parameters / 配置参数
+            text: 输入文本
+            **kwargs: 管道参数
             
         Returns:
-            List of postprocess
-
-ed texts / 后处理后的文本列表
+            处理后的文本
         """
-        # 默认实现：对每个文本单独调用_builtin_postprocess_text
-        return [self._builtin_postprocess_text(text, **kwargs) for text in texts]
+        pipeline = self.get_text_processing_pipeline()
+        result = text
+        
+        for processor in pipeline:
+            result = processor(result, **kwargs)
+            self.logger.debug(f"处理器 {processor.__name__} 完成")
+            
+        return result
 
     def _preprocess_text(self, text: str, **kwargs) -> str:
         """
-        Subclass text preprocessing before translation (can be overridden by subclasses)
-        翻译前子类文本预处理（子类可以覆盖）
+        文本预处理
         
         Args:
-            text: Input text / 输入文本
-            **kwargs: Configuration parameters / 配置参数
+            text: 输入文本
+            **kwargs: 额外参数
             
         Returns:
-            Preprocessed text / 预处理后的文本
+            预处理后的文本
         """
-        # 子类可以覆盖此方法实现特定的预处理逻辑
-        return text
+        if not self.config.enable_preprocessing:
+            return text
+            
+        # 内置预处理步骤
+        processed = text.strip()
+        
+        # 子类可以覆盖此方法添加特定预处理
+        processed = self._custom_preprocess(processed, **kwargs)
+        
+        return processed
+
+    def _split_long_text(self, text: str, **kwargs) -> Union[str, List[str]]:
+        """
+        长文本分割
+        
+        Args:
+            text: 输入文本
+            **kwargs: 额外参数
+            
+        Returns:
+            分割后的文本片段或原文本
+        """
+        if len(text) <= self.config.text_max_length:
+            return text
+            
+        self.logger.info(f"文本过长 ({len(text)} 字符)，进行分割")
+        
+        strategy = kwargs.get('split_strategy', self.config.split_strategy)
+        
+        if strategy == SplitStrategy.SENTENCE:
+            return self._split_by_sentence(text, **kwargs)
+        elif strategy == SplitStrategy.PARAGRAPH:
+            return self._split_by_paragraph(text, **kwargs)
+        elif strategy == SplitStrategy.FIXED_LENGTH:
+            return self._split_by_fixed_length(text, **kwargs)
+        elif strategy == SplitStrategy.SEMANTIC:
+            return self._split_by_semantic(text, **kwargs)
+        else:
+            return self._split_by_fixed_length(text, **kwargs)
+
+    def _apply_translation(self, text: Union[str, List[str]], 
+                          source_lang: str, 
+                          target_lang: str,
+                          **kwargs) -> Union[str, List[str]]:
+        """
+        应用翻译
+        
+        Args:
+            text: 文本或文本列表
+            source_lang: 源语言
+            target_lang: 目标语言
+            **kwargs: 额外参数
+            
+        Returns:
+            翻译结果
+        """
+        if isinstance(text, str):
+            return self._translate_single_raw(text, source_lang, target_lang, **kwargs)
+        else:
+            return self._translate_parallel(text, source_lang, target_lang, **kwargs)
+
+    def _merge_translated_texts(self, fragments: List[str], **kwargs) -> str:
+        """
+        合并翻译后的文本片段
+        
+        Args:
+            fragments: 文本片段列表
+            **kwargs: 额外参数
+            
+        Returns:
+            合并后的文本
+        """
+        if len(fragments) == 1:
+            return fragments[0]
+            
+        # 简单的空格合并，子类可以覆盖实现更智能的合并
+        return ' '.join(fragments)
 
     def _postprocess_text(self, text: str, **kwargs) -> str:
         """
-        Subclass text postprocessing after translation (can be overridden by subclasses)
-        翻译后子类文本后处理（子类可以覆盖）
+        后处理
         
         Args:
-            text: Translated text / 翻译后的文本
-            **kwargs: Configuration parameters / 配置参数
+            text: 翻译后的文本
+            **kwargs: 额外参数
             
         Returns:
-            Postprocessed text / 后处理后的文本
+            后处理后的文本
         """
-        # 子类可以覆盖此方法实现特定的后处理逻辑
+        if not self.config.enable_postprocessing:
+            return text
+            
+        # 内置后处理步骤
+        processed = text.strip()
+        
+        # 子类可以覆盖此方法添加特定后处理
+        processed = self._custom_postprocess(processed, **kwargs)
+        
+        return processed
+
+    # ==================== 必须由子类实现的方法 ====================
+    
+    @abc.abstractmethod
+    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
+        """
+        调用具体翻译API - 必须由子类实现
+        
+        Args:
+            text: 要翻译的文本
+            source_lang: 源语言
+            target_lang: 目标语言
+            **kwargs: API特定参数
+            
+        Returns:
+            API原始响应
+        """
+        pass
+
+    @abc.abstractmethod
+    def _parse_api_response(self, response: Any, **kwargs) -> str:
+        """
+        解析API响应 - 必须由子类实现
+        
+        Args:
+            response: API响应对象
+            **kwargs: 解析参数
+            
+        Returns:
+            解析后的翻译文本
+        """
+        pass
+
+    # ==================== 翻译策略实现 ====================
+    
+    def _translate_single(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """单文本翻译（自动策略选择）"""
+        # 检查缓存
+        cache_key = self._get_cache_key(text, source_lang, target_lang)
+        if self._cache and cache_key in self._cache:
+            self.logger.debug("缓存命中")
+            return self._cache[cache_key]
+        
+        # 选择策略
+        if len(text) > self.config.text_max_length:
+            strategy = 'chunk'
+        else:
+            strategy = 'raw'
+            
+        result = self.translate_with_strategy(text, strategy, source_lang, target_lang, **kwargs)
+        
+        # 更新缓存
+        if self._cache is not None:
+            self._update_cache(cache_key, result)
+            
+        return result
+
+    def _translate_single_raw(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """原始API翻译（无分割）"""
+        self.logger.debug(f"直接翻译: {text[:50]}...")
+        
+        # 应用速率限制
+        self._apply_rate_limiting()
+        
+        # 重试机制
+        response = self._retry_on_failure(
+            self._call_translate_api,
+            text, source_lang, target_lang, **kwargs
+        )
+        
+        # 解析响应
+        result = self._parse_api_response(response, **kwargs)
+        
+        # 更新使用量统计
+        self._update_usage_metrics(text, result)
+        
+        return result
+
+    def _translate_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """分块翻译"""
+        self.logger.info("使用分块翻译策略")
+        
+        # 分割文本
+        chunks = self._split_long_text(text, **kwargs)
+        if isinstance(chunks, str):
+            chunks = [chunks]
+            
+        self.logger.debug(f"分割为 {len(chunks)} 个片段")
+        
+        # 翻译各个片段
+        translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, **kwargs)
+        
+        # 合并结果
+        result = self._merge_translated_texts(translated_chunks, **kwargs)
+        
+        return result
+
+    def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+        """并行翻译"""
+        if len(texts) == 1:
+            return [self._translate_single_raw(texts[0], source_lang, target_lang, **kwargs)]
+            
+        self.logger.info(f"并行翻译 {len(texts)} 个文本")
+        
+        # 分批处理
+        batch_size = kwargs.get('batch_size', self.config.batch_size)
+        batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
+        
+        results = []
+        for batch in batches:
+            batch_results = self._process_batch_parallel(batch, source_lang, target_lang, **kwargs)
+            results.extend(batch_results)
+            
+        return results
+
+    def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+        """批量翻译（列表输入）"""
+        return self._translate_parallel(texts, source_lang, target_lang, **kwargs)
+
+    def _translate_dict(self, text_dict: Dict, source_lang: str, target_lang: str, **kwargs) -> Dict:
+        """字典翻译（保持结构）"""
+        # 提取所有文本值
+        keys, texts = zip(*text_dict.items())
+        
+        # 批量翻译
+        translated_texts = self._translate_batch(list(texts), source_lang, target_lang, **kwargs)
+        
+        # 重建字典
+        return dict(zip(keys, translated_texts))
+
+    # ==================== 分割策略实现 ====================
+    
+    def _split_by_sentence(self, text: str, **kwargs) -> List[str]:
+        """按句子分割"""
+        # 简单的句子分割实现
+        import re
+        sentences = re.split(r'[.!?。！？]+', text)
+        return [s.strip() for s in sentences if s.strip()]
+
+    def _split_by_paragraph(self, text: str, **kwargs) -> List[str]:
+        """按段落分割"""
+        paragraphs = text.split('\n\n')
+        return [p.strip() for p in paragraphs if p.strip()]
+
+    def _split_by_fixed_length(self, text: str, **kwargs) -> List[str]:
+        """按固定长度分割"""
+        max_len = kwargs.get('max_length', self.config.text_max_length)
+        chunks = []
+        
+        for i in range(0, len(text), max_len):
+            chunk = text[i:i + max_len]
+            
+            # 尝试在句子边界分割
+            if i + max_len < len(text):
+                last_period = max(
+                    chunk.rfind('.'),
+                    chunk.rfind('!'),
+                    chunk.rfind('?'),
+                    chunk.rfind('。'),
+                    chunk.rfind('！'),
+                    chunk.rfind('？')
+                )
+                if last_period > max_len * 0.5:  # 避免过小的片段
+                    chunk = chunk[:last_period + 1]
+                    
+            chunks.append(chunk)
+            
+        return chunks
+
+    def _split_by_semantic(self, text: str, **kwargs) -> List[str]:
+        """语义分割（需要子类实现或使用外部库）"""
+        self.logger.warning("语义分割未实现，回退到固定长度分割")
+        return self._split_by_fixed_length(text, **kwargs)
+
+    # ==================== 并发处理 ====================
+    
+    def _process_batch_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+        """并行处理批次"""
+        if not self._executor:
+            self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
+            
+        futures = []
+        for text in texts:
+            future = self._executor.submit(
+                self._translate_single_raw, text, source_lang, target_lang, **kwargs
+            )
+            futures.append(future)
+            
+        results = []
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                self.logger.error(f"并行翻译失败: {e}")
+                results.append("")  # 错误时返回空字符串
+                
+        return results
+
+    def get_executor(self, executor_type: str = 'thread', **kwargs):
+        """获取执行器"""
+        if executor_type == 'thread':
+            return ThreadPoolExecutor(max_workers=kwargs.get('max_workers', self.config.max_workers))
+        else:
+            raise ValueError(f"不支持的执行器类型: {executor_type}")
+
+    # ==================== 错误处理与重试 ====================
+    
+    def _retry_on_failure(self, func: Callable, *args, **kwargs) -> Any:
+        """
+        重试装饰器实现
+        
+        Args:
+            func: 要重试的函数
+            *args: 函数参数
+            **kwargs: 函数关键字参数
+            
+        Returns:
+            函数执行结果
+        """
+        max_retries = kwargs.pop('max_retries', self.config.max_retries)
+        retry_strategy = kwargs.pop('retry_strategy', self.config.retry_strategy)
+        
+        last_exception = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+                
+            except Exception as e:
+                last_exception = e
+                self.logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
+                
+                if attempt == max_retries:
+                    break
+                    
+                # 计算延迟
+                delay = self._calculate_retry_delay(attempt, retry_strategy)
+                self.logger.info(f"等待 {delay:.2f} 秒后重试")
+                time.sleep(delay)
+                
+                # 错误处理
+                self._handle_retry_error(e, attempt, **kwargs)
+        
+        # 所有重试都失败
+        raise self._wrap_exception(last_exception, *args, **kwargs)
+
+    def _calculate_retry_delay(self, attempt: int, strategy: RetryStrategy) -> float:
+        """计算重试延迟"""
+        if strategy == RetryStrategy.EXPONENTIAL:
+            return min(2 ** attempt, 60)  # 指数退避，最大60秒
+        elif strategy == RetryStrategy.LINEAR:
+            return min(attempt * 2, 30)   # 线性增长，最大30秒
+        elif strategy == RetryStrategy.ADAPTIVE:
+            # 基于错误类型的自适应延迟
+            return min(2 ** attempt, 45)
+        else:
+            return min(2 ** attempt, 30)
+
+    def _handle_retry_error(self, error: Exception, attempt: int, **kwargs):
+        """处理重试错误"""
+        error_type = type(error).__name__
+        
+        if "rate" in str(error).lower() or "limit" in str(error).lower():
+            # 速率限制错误，延长等待时间
+            time.sleep(min(2 ** (attempt + 2), 120))
+        elif "timeout" in str(error).lower():
+            # 超时错误，可能网络问题
+            pass  # 使用标准延迟
+
+    def _wrap_exception(self, error: Exception, *args, **kwargs) -> TranslationError:
+        """包装异常"""
+        if isinstance(error, TranslationError):
+            return error
+            
+        error_msg = f"翻译失败: {error}"
+        return APIError(error_msg)
+
+    # ==================== 速率限制 ====================
+    
+    def _apply_rate_limiting(self):
+        """应用速率限制"""
+        if not hasattr(self._thread_local, 'last_request_time'):
+            self._thread_local.last_request_time = 0
+            
+        current_time = time.time()
+        time_since_last = current_time - self._thread_local.last_request_time
+        
+        min_interval = getattr(self, 'MIN_REQUEST_INTERVAL', 0.1)
+        if time_since_last < min_interval:
+            sleep_time = min_interval - time_since_last
+            time.sleep(sleep_time)
+            
+        self._thread_local.last_request_time = time.time()
+
+    # ==================== 配置管理 ====================
+    
+    def _update_config_from_kwargs(self, kwargs: Dict):
+        """从kwargs更新配置"""
+        for key, value in kwargs.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+            else:
+                self.logger.warning(f"忽略未知配置项: {key}")
+
+    def update_config(self, **kwargs):
+        """更新配置"""
+        self._update_config_from_kwargs(kwargs)
+        self.validate_config()
+
+    def validate_config(self):
+        """验证配置"""
+        if not self.config.api_key:
+            raise ConfigurationError("API密钥未配置")
+            
+        if not self.config.target_lang:
+            raise ConfigurationError("目标语言未配置")
+
+    # ==================== 缓存管理 ====================
+    
+    def _get_cache_key(self, text: str, source_lang: str, target_lang: str) -> str:
+        """生成缓存键"""
+        return f"{source_lang}_{target_lang}_{hash(text)}"
+
+    def _update_cache(self, key: str, value: str):
+        """更新缓存"""
+        if len(self._cache) >= self.config.cache_size:
+            # 简单的LRU策略：移除第一个元素
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[key] = value
+
+    def enable_memory_cache(self, max_size: int = 1000):
+        """启用内存缓存"""
+        self.config.enable_cache = True
+        self.config.cache_size = max_size
+        self._cache = {}
+
+    def clear_cache(self):
+        """清空缓存"""
+        if self._cache:
+            self._cache.clear()
+
+    # ==================== 服务信息 ====================
+    
+    def get_supported_languages(self) -> Dict[str, str]:
+        """获取支持的语言列表"""
+        return self.SUPPORTED_LANGUAGES.copy()
+
+    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
+        """验证语言代码"""
+        supported = self.get_supported_languages()
+        
+        if lang_code == 'auto' and lang_type == 'source':
+            return True
+            
+        return lang_code in supported
+
+    def _validate_languages(self, source_lang: str, target_lang: str):
+        """验证语言对"""
+        if not self.validate_language(source_lang, 'source'):
+            raise ValueError(f"不支持的源语言: {source_lang}")
+            
+        if not self.validate_language(target_lang, 'target'):
+            raise ValueError(f"不支持的目标语言: {target_lang}")
+
+    def get_usage(self) -> Dict[str, Any]:
+        """获取使用情况"""
+        return self._metrics or {}
+
+    # ==================== 钩子方法（子类可覆盖） ====================
+    
+    def _custom_preprocess(self, text: str, **kwargs) -> str:
+        """自定义预处理（子类可覆盖）"""
         return text
 
-    def _preprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
-        """
-        Subclass batch preprocessing before translation (can be overridden by subclasses)
-        翻译前子类批量预处理（子类可以覆盖）
-        
-        Args:
-            texts: List of texts to preprocess / 要预处理的文本列表
-            **kwargs: Configuration parameters / 配置参数
+    def _custom_postprocess(self, text: str, **kwargs) -> str:
+        """自定义后处理（子类可覆盖）"""
+        return text
+
+    def _update_usage_metrics(self, original_text: str, translated_text: str):
+        """更新使用量统计（子类可覆盖）"""
+        if not self.config.enable_metrics:
+            return
             
-        Returns:
-            List of preprocessed texts / 预处理后的文本列表
-        """
-        # 默认实现：对每个文本单独调用_preprocess_text
-        return [self._preprocess_text(text, **kwargs) for text in texts]
+        chars_translated = len(original_text)
+        self._metrics.setdefault('chars_translated', 0)
+        self._metrics['chars_translated'] += chars_translated
+        self._metrics.setdefault('request_count', 0)
+        self._metrics['request_count'] += 1
 
-    def _postprocess_batch(self, texts: List[Union[str,dict,List]], **kwargs) -> List[Union[str,dict,List]]:
-        """
-        Subclass batch postprocessing after translation (can be overridden by subclasses)
-        翻译后子类批量后处理（子类可以覆盖）
+    def _setup_logger(self) -> logging.Logger:
+        """设置日志记录器"""
+        logger = logging.getLogger(f"translator.{self.SERVICE_NAME}")
         
-        Args:
-            texts: List of translated texts to postprocess / 要后处理的翻译后文本列表
-            **kwargs: Configuration parameters / 配置参数
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
             
-        Returns:
-            List of postprocessed texts / 后处理后的文本列表
-        """
-        # 默认实现：对每个文本单独调用_postprocess_text
-        return [self._postprocess_text(text, **kwargs) for text in texts]
-
-    def get_usage_info(self) -> Dict[str, Any]:
-        """
-        Get API usage information (quota, remaining requests, etc.)
-        获取API使用信息（配额、剩余请求数等）
+        logger.setLevel(
+            logging.DEBUG if self.config.debug_mode else logging.INFO
+        )
         
-        Returns:
-            Dictionary with usage information / 包含使用信息的字典
-        """
-        return {}
+        return logger
 
-    def __del__(self):
+    # ==================== 上下文管理器支持 ====================
+    
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
         """清理资源"""
-        if self._thread_pool:
-            self._thread_pool.shutdown(wait=False)
+        if self._executor:
+            self._executor.shutdown(wait=True)
+            self._executor = None
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(api_config_keys={list(self.api_config.keys())})"
+    # ==================== 工具方法 ====================
+    
+    def enable_debug_mode(self, level: str = 'basic'):
+        """启用调试模式"""
+        self.config.debug_mode = True
+        self.logger.setLevel(logging.DEBUG)
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """获取性能指标"""
+        return self._metrics.copy() if self._metrics else {}
+
+# 便捷函数
+def create_translator(service_name: str, **kwargs) -> TranslatorBase:
+    """
+    创建翻译器实例的便捷函数
+    
+    Args:
+        service_name: 服务名称
+        **kwargs: 配置参数
+        
+    Returns:
+        翻译器实例
+    """
+    # 动态导入服务类（实际实现时需要根据服务名映射）
+    # 这里只是示意，实际实现需要服务注册机制
+    from translator.services import get_service_class
+    service_class = get_service_class(service_name)
+    return service_class(**kwargs)
