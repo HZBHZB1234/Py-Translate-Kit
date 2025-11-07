@@ -74,6 +74,20 @@ class TranslationConfig:
         if self.api_key is None:
             self.api_key = {}
 
+@dataclass
+class Metadata:
+    """元数据信息类，用于封装翻译器的元数据信息"""
+    console_url: str = ""
+    description: str = ""
+    documentation_url: str = ""
+    short_description: str = ""
+    usage_documentation: str = ""
+    custom_override_content: Dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.custom_override_content is None:
+            self.custom_override_content = {}
+
 class TranslatorBase(abc.ABC):
     """
     翻译器基类，提供统一的翻译接口和可扩展架构。
@@ -89,6 +103,15 @@ class TranslatorBase(abc.ABC):
     SERVICE_NAME = "base_translator"
     SUPPORTED_LANGUAGES = {}  # {'en': 'English', 'zh': 'Chinese'}
     DEFAULT_CONFIG = TranslationConfig()
+    
+    # ==================== 元数据信息（子类可覆盖）====================
+    METADATA = Metadata(
+        console_url="",
+        description="Base translator class",
+        documentation_url="",
+        short_description="Base translator",
+        usage_documentation=""
+    )
     
     def __init__(self, config: Optional[TranslationConfig] = None, **kwargs):
         """
@@ -116,6 +139,76 @@ class TranslatorBase(abc.ABC):
         
         self.logger.info(f"{self.SERVICE_NAME} 初始化完成")
 
+    def get_metadata(self) -> Dict[str, Any]:
+        """
+        获取翻译器元数据信息
+        
+        Returns:
+            包含所有元数据信息的字典
+        """
+        return {
+            "console_url": self.METADATA.console_url,
+            "description": self.METADATA.description,
+            "documentation_url": self.METADATA.documentation_url,
+            "short_description": self.METADATA.short_description,
+            "usage_documentation": self.METADATA.usage_documentation,
+            "custom_override_content": self.METADATA.custom_override_content.copy() if self.METADATA.custom_override_content else {},
+        }
+    
+    def get_console_url(self) -> str:
+        """
+        获取控制台URL
+        
+        Returns:
+            控制台URL字符串
+        """
+        return self.METADATA.console_url
+    
+    def get_description(self) -> str:
+        """
+        获取详细描述
+        
+        Returns:
+            详细描述字符串
+        """
+        return self.METADATA.description
+    
+    def get_documentation_url(self) -> str:
+        """
+        获取文档URL
+        
+        Returns:
+            文档URL字符串
+        """
+        return self.METADATA.documentation_url
+    
+    def get_short_description(self) -> str:
+        """
+        获取简要说明
+        
+        Returns:
+            简要说明字符串
+        """
+        return self.METADATA.short_description
+    
+    def get_usage_documentation(self) -> str:
+        """
+        获取使用文档
+        
+        Returns:
+            使用文档字符串
+        """
+        return self.METADATA.usage_documentation
+    
+    def get_custom_override_content(self) -> Dict[str, Any]:
+        """
+        获取自定义覆盖内容
+        
+        Returns:
+            自定义覆盖内容字典
+        """
+        return self.METADATA.custom_override_content.copy() if self.METADATA.custom_override_content else {}
+    
     # ==================== 核心翻译接口 ====================
     
     def translate(self, text: Union[str, List, Dict], 

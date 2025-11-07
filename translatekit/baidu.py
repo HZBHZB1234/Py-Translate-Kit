@@ -10,7 +10,7 @@ import base64
 import hmac
 import requests
 from typing import Dict, Any, List, Optional, Union
-from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError
+from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
 class BaiduTranslator(TranslatorBase):
     """百度翻译服务实现类"""
@@ -69,6 +69,13 @@ class BaiduTranslator(TranslatorBase):
         "financial": "金融"
     }
     
+    metadata = Metadata(
+        console_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
+        description="百度翻译服务实现",
+        documentation_url="https://fanyi-api.baidu.com/doc/11",
+        short_description="百度翻译服务",
+        usage_documentation=""
+    )
     def __init__(self, config: Optional[TranslationConfig] = None, **kwargs):
         """
         初始化百度翻译器
