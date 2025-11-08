@@ -14,34 +14,41 @@ from functools import wraps
 from dataclasses import dataclass
 from enum import Enum
 
-# 自定义异常
+
 class TranslationError(Exception):
     """翻译相关异常基类"""
     pass
+
 
 class ConfigurationError(TranslationError):
     """配置错误"""
     pass
 
+
 class APIError(TranslationError):
     """API调用错误"""
     pass
 
-# 配置相关枚举和数据结构
+
 class SplitStrategy(Enum):
+    """文本分割策略"""
     SENTENCE = "sentence"
     PARAGRAPH = "paragraph" 
     FIXED_LENGTH = "fixed_length"
     SEMANTIC = "semantic"
 
+
 class RetryStrategy(Enum):
+    """重试策略"""
     EXPONENTIAL = "exponential"
     LINEAR = "linear"
     ADAPTIVE = "adaptive"
 
+
 @dataclass
 class TranslationConfig:
     """翻译配置数据类"""
+    
     # API配置
     api_key: Dict[str, str] = None
     
@@ -74,9 +81,10 @@ class TranslationConfig:
         if self.api_key is None:
             self.api_key = {}
 
+
 @dataclass
 class Metadata:
-    """元数据信息类，用于封装翻译器的元数据信息"""
+    """翻译器元数据信息"""
     console_url: str = ""
     description: str = ""
     documentation_url: str = ""
@@ -88,23 +96,17 @@ class Metadata:
         if self.custom_override_content is None:
             self.custom_override_content = {}
 
+
 class TranslatorBase(abc.ABC):
     """
-    翻译器基类，提供统一的翻译接口和可扩展架构。
-    
-    设计原则：
-    1. 开箱即用：提供合理的默认配置
-    2. 高度可扩展：通过继承和配置支持深度定制
-    3. 性能优化：内置并发、缓存、重试等机制
-    4. 错误恢复：多层次错误处理和降级策略
+    翻译器基类，提供统一的翻译接口和可扩展架构
     """
     
     # 类属性：服务元信息（子类应覆盖）
     SERVICE_NAME = "base_translator"
-    SUPPORTED_LANGUAGES = {}  # {'en': 'English', 'zh': 'Chinese'}
+    SUPPORTED_LANGUAGES = {}
     DEFAULT_CONFIG = TranslationConfig()
     
-    # ==================== 元数据信息（子类可覆盖）====================
     METADATA = Metadata(
         console_url="",
         description="Base translator class",
@@ -121,7 +123,6 @@ class TranslatorBase(abc.ABC):
             config: 翻译配置对象
             **kwargs: 支持直接传入配置参数
         """
-        # 合并配置
         self.config = config or self.DEFAULT_CONFIG
         
         # 初始化组件
@@ -134,18 +135,11 @@ class TranslatorBase(abc.ABC):
         if kwargs:
             self._update_config_from_kwargs(kwargs)
         
-        # 验证配置
         self.validate_config()
-        
         self.logger.info(f"{self.SERVICE_NAME} 初始化完成")
 
     def get_metadata(self) -> Dict[str, Any]:
-        """
-        获取翻译器元数据信息
-        
-        Returns:
-            包含所有元数据信息的字典
-        """
+        """获取翻译器元数据信息"""
         return {
             "console_url": self.METADATA.console_url,
             "description": self.METADATA.description,
@@ -156,57 +150,27 @@ class TranslatorBase(abc.ABC):
         }
     
     def get_console_url(self) -> str:
-        """
-        获取控制台URL
-        
-        Returns:
-            控制台URL字符串
-        """
+        """获取控制台URL"""
         return self.METADATA.console_url
     
     def get_description(self) -> str:
-        """
-        获取详细描述
-        
-        Returns:
-            详细描述字符串
-        """
+        """获取详细描述"""
         return self.METADATA.description
     
     def get_documentation_url(self) -> str:
-        """
-        获取文档URL
-        
-        Returns:
-            文档URL字符串
-        """
+        """获取文档URL"""
         return self.METADATA.documentation_url
     
     def get_short_description(self) -> str:
-        """
-        获取简要说明
-        
-        Returns:
-            简要说明字符串
-        """
+        """获取简要说明"""
         return self.METADATA.short_description
     
     def get_usage_documentation(self) -> str:
-        """
-        获取使用文档
-        
-        Returns:
-            使用文档字符串
-        """
+        """获取使用文档"""
         return self.METADATA.usage_documentation
     
     def get_custom_override_content(self) -> Dict[str, Any]:
-        """
-        获取自定义覆盖内容
-        
-        Returns:
-            自定义覆盖内容字典
-        """
+        """获取自定义覆盖内容"""
         return self.METADATA.custom_override_content.copy() if self.METADATA.custom_override_content else {}
     
     # ==================== 核心翻译接口 ====================
@@ -230,7 +194,6 @@ class TranslatorBase(abc.ABC):
         source_lang = source_lang or self.config.source_lang
         target_lang = target_lang or self.config.target_lang
         
-        # 验证语言
         self._validate_languages(source_lang, target_lang)
         
         # 根据输入类型选择处理方式
@@ -247,18 +210,7 @@ class TranslatorBase(abc.ABC):
                         source_lang: Optional[str] = None,
                         target_lang: Optional[str] = None,
                         **kwargs) -> List[str]:
-        """
-        批量翻译接口
-        
-        Args:
-            texts: 文本列表
-            source_lang: 源语言
-            target_lang: 目标语言
-            **kwargs: 额外参数
-            
-        Returns:
-            翻译结果列表
-        """
+        """批量翻译接口"""
         return self.translate(texts, source_lang, target_lang, **kwargs)
 
     def translate_with_strategy(self, text: str,
@@ -306,12 +258,7 @@ class TranslatorBase(abc.ABC):
     # ==================== 文本处理管道 ====================
     
     def get_text_processing_pipeline(self) -> List[Callable]:
-        """
-        获取文本处理管道，子类可覆盖以重新定义流程
-        
-        Returns:
-            处理函数列表
-        """
+        """获取文本处理管道，子类可覆盖以重新定义流程"""
         return [
             self._preprocess_text,
             self._split_long_text,
@@ -321,16 +268,7 @@ class TranslatorBase(abc.ABC):
         ]
 
     def execute_pipeline(self, text: str, **kwargs) -> str:
-        """
-        执行文本处理管道
-        
-        Args:
-            text: 输入文本
-            **kwargs: 管道参数
-            
-        Returns:
-            处理后的文本
-        """
+        """执行文本处理管道"""
         pipeline = self.get_text_processing_pipeline()
         result = text
         
@@ -341,38 +279,17 @@ class TranslatorBase(abc.ABC):
         return result
 
     def _preprocess_text(self, text: str, **kwargs) -> str:
-        """
-        文本预处理
-        
-        Args:
-            text: 输入文本
-            **kwargs: 额外参数
-            
-        Returns:
-            预处理后的文本
-        """
+        """文本预处理"""
         if not self.config.enable_preprocessing:
             return text
             
-        # 内置预处理步骤
         processed = text.strip()
-        
-        # 子类可以覆盖此方法添加特定预处理
         processed = self._custom_preprocess(processed, **kwargs)
         
         return processed
 
     def _split_long_text(self, text: str, **kwargs) -> Union[str, List[str]]:
-        """
-        长文本分割
-        
-        Args:
-            text: 输入文本
-            **kwargs: 额外参数
-            
-        Returns:
-            分割后的文本片段或原文本
-        """
+        """长文本分割"""
         if len(text) <= self.config.text_max_length:
             return text
             
@@ -395,34 +312,14 @@ class TranslatorBase(abc.ABC):
                           source_lang: str, 
                           target_lang: str,
                           **kwargs) -> Union[str, List[str]]:
-        """
-        应用翻译
-        
-        Args:
-            text: 文本或文本列表
-            source_lang: 源语言
-            target_lang: 目标语言
-            **kwargs: 额外参数
-            
-        Returns:
-            翻译结果
-        """
+        """应用翻译"""
         if isinstance(text, str):
             return self._translate_single_raw(text, source_lang, target_lang, **kwargs)
         else:
             return self._translate_parallel(text, source_lang, target_lang, **kwargs)
 
     def _merge_translated_texts(self, fragments: List[str], **kwargs) -> str:
-        """
-        合并翻译后的文本片段
-        
-        Args:
-            fragments: 文本片段列表
-            **kwargs: 额外参数
-            
-        Returns:
-            合并后的文本
-        """
+        """合并翻译后的文本片段"""
         if len(fragments) == 1:
             return fragments[0]
             
@@ -430,23 +327,11 @@ class TranslatorBase(abc.ABC):
         return ' '.join(fragments)
 
     def _postprocess_text(self, text: str, **kwargs) -> str:
-        """
-        后处理
-        
-        Args:
-            text: 翻译后的文本
-            **kwargs: 额外参数
-            
-        Returns:
-            后处理后的文本
-        """
+        """后处理"""
         if not self.config.enable_postprocessing:
             return text
             
-        # 内置后处理步骤
         processed = text.strip()
-        
-        # 子类可以覆盖此方法添加特定后处理
         processed = self._custom_postprocess(processed, **kwargs)
         
         return processed
@@ -493,7 +378,7 @@ class TranslatorBase(abc.ABC):
             self.logger.debug("缓存命中")
             return self._cache[cache_key]
         
-        # 选择策略
+        # 根据文本长度选择策略
         if len(text) > self.config.text_max_length:
             strategy = 'chunk'
         else:
@@ -592,7 +477,6 @@ class TranslatorBase(abc.ABC):
             
         # 如果所有文本都在缓存中，则直接返回结果
         if not remaining_texts:
-            # 按照原始顺序排列结果
             results = [None] * len(texts)
             for index, result in cached_results:
                 results[index] = result
@@ -649,7 +533,6 @@ class TranslatorBase(abc.ABC):
             
         # 如果所有文本都在缓存中，则直接返回结果
         if not remaining_texts:
-            # 按照原始顺序排列结果
             results = [None] * len(texts)
             for index, result in cached_results:
                 results[index] = result
@@ -713,8 +596,6 @@ class TranslatorBase(abc.ABC):
         
         # 组合最终结果
         final_result = {}
-        
-        # 添加缓存的结果
         final_result.update(cached_results)
         
         # 添加新翻译的结果
@@ -727,7 +608,6 @@ class TranslatorBase(abc.ABC):
     
     def _split_by_sentence(self, text: str, **kwargs) -> List[str]:
         """按句子分割"""
-        # 简单的句子分割实现
         import re
         sentences = re.split(r'[.!?。！？]+', text)
         return [s.strip() for s in sentences if s.strip()]
@@ -847,8 +727,7 @@ class TranslatorBase(abc.ABC):
         elif strategy == RetryStrategy.LINEAR:
             return min(attempt * 2, 30)   # 线性增长，最大30秒
         elif strategy == RetryStrategy.ADAPTIVE:
-            # 基于错误类型的自适应延迟
-            return min(2 ** attempt, 45)
+            return min(2 ** attempt, 45)  # 自适应延迟
         else:
             return min(2 ** attempt, 30)
 
@@ -861,7 +740,7 @@ class TranslatorBase(abc.ABC):
             time.sleep(min(2 ** (attempt + 2), 120))
         elif "timeout" in str(error).lower():
             # 超时错误，可能网络问题
-            pass  # 使用标准延迟
+            pass
 
     def _wrap_exception(self, error: Exception, *args, **kwargs) -> TranslationError:
         """包装异常"""
@@ -1027,10 +906,10 @@ class TranslatorBase(abc.ABC):
         """获取性能指标"""
         return self._metrics.copy() if self._metrics else {}
     
-    # ==================== 其他工具 ====================
+    # ==================== JSON补丁翻译 ====================
 
     def get_json_patch(self, json1: Union[Dict,List], json2: Union[Dict,List]) -> List[Dict]:
-        """比较两个JSON对象"""
+        """比较两个JSON对象生成补丁"""
         try:
             import jsonpatch
         except ImportError:
@@ -1051,14 +930,6 @@ class TranslatorBase(abc.ABC):
         
         此方法会筛选出 'add' 和 'replace' 操作，将其 'value' 字段进行翻译，
         并将翻译后的值重新组合成新的 JSON Patch。
-        
-        Args:
-            json_patch: JSON Patch 操作列表
-            source_lang: 源语言代码
-            target_lang: 目标语言代码
-            
-        Returns:
-            包含翻译后值的 JSON Patch 列表
         """
         # 提取需要翻译的值（仅针对 'add' 和 'replace' 操作）
         values_to_translate = [operation['value'] for operation in json_patch 
