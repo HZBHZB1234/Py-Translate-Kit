@@ -1044,3 +1044,40 @@ class TranslatorBase(abc.ABC):
         except ImportError:
             raise ImportError("请安装jsonpatch库以使用此功能")
         return jsonpatch.apply_patch(json, patch)
+    
+    def translate_jsonpatch(self, json_patch: List[Dict], source_lang: str, target_lang: str) -> List[Dict]:
+        """
+        翻译 JSON Patch 中的操作值
+        
+        此方法会筛选出 'add' 和 'replace' 操作，将其 'value' 字段进行翻译，
+        并将翻译后的值重新组合成新的 JSON Patch。
+        
+        Args:
+            json_patch: JSON Patch 操作列表
+            source_lang: 源语言代码
+            target_lang: 目标语言代码
+            
+        Returns:
+            包含翻译后值的 JSON Patch 列表
+        """
+        # 提取需要翻译的值（仅针对 'add' 和 'replace' 操作）
+        values_to_translate = [operation['value'] for operation in json_patch 
+                            if operation['op'] in ['add', 'replace']]
+        
+        # 执行翻译操作
+        translated_values = self.translate(values_to_translate, source_lang, target_lang)
+        
+        # 将翻译后的值重新整合进原始 patch 结构中
+        translated_patch = []
+        translation_index = 0
+        for operation in json_patch:
+            if operation['op'] in ['add', 'replace']:
+                # 创建一个新操作，使用翻译后的值替换原值
+                updated_operation = {**operation, 'value': translated_values[translation_index]}
+                translated_patch.append(updated_operation)
+                translation_index += 1
+            else:
+                # 对于其他操作类型，直接复制原始操作
+                translated_patch.append(operation)
+                
+        return translated_patch
