@@ -28,11 +28,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "build",
-    "twine",
-    "pytest>=6.0",
-    "pytest-cov",
+extras = [
+    'jsonpatch'
 ]
 
 [project.urls]

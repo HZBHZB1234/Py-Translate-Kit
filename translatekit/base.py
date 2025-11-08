@@ -66,7 +66,7 @@ class TranslationConfig:
     
     # 高级功能
     enable_cache: bool = False
-    cache_size: int = 1000
+    cache_size: Optional[int] = None
     enable_metrics: bool = False
     debug_mode: bool = False
 
@@ -282,14 +282,26 @@ class TranslatorBase(abc.ABC):
         source_lang = source_lang or self.config.source_lang
         target_lang = target_lang or self.config.target_lang
         
+        # 检查缓存
+        cache_key = self._get_cache_key(text, source_lang, target_lang)
+        if self._cache and cache_key in self._cache:
+            self.logger.debug("缓存命中")
+            return self._cache[cache_key]
+        
         if strategy == 'raw':
-            return self._translate_single_raw(text, source_lang, target_lang, **kwargs)
+            result = self._translate_single_raw(text, source_lang, target_lang, **kwargs)
         elif strategy == 'chunk':
-            return self._translate_chunked(text, source_lang, target_lang, **kwargs)
+            result = self._translate_chunked(text, source_lang, target_lang, **kwargs)
         elif strategy == 'parallel':
-            return self._translate_parallel([text], source_lang, target_lang, **kwargs)[0]
+            result = self._translate_parallel([text], source_lang, target_lang, **kwargs)[0]
         else:  # auto
-            return self._translate_single(text, source_lang, target_lang, **kwargs)
+            result = self._translate_single(text, source_lang, target_lang, **kwargs)
+        
+        # 更新缓存
+        if self._cache is not None:
+            self._update_cache(cache_key, result)
+            
+        return result
 
     # ==================== 文本处理管道 ====================
     
@@ -497,6 +509,11 @@ class TranslatorBase(abc.ABC):
 
     def _translate_single_raw(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
         """原始API翻译（无分割）"""
+        cache_key = self._get_cache_key(text, source_lang, target_lang)
+        if self._cache and cache_key in self._cache:
+            self.logger.debug("缓存命中")
+            return self._cache[cache_key]
+        
         self.logger.debug(f"直接翻译: {text[:50]}...")
         
         # 应用速率限制
@@ -514,10 +531,19 @@ class TranslatorBase(abc.ABC):
         # 更新使用量统计
         self._update_usage_metrics(text, result)
         
+        # 更新缓存
+        if self._cache is not None:
+            self._update_cache(cache_key, result)
+            
         return result
 
     def _translate_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
         """分块翻译"""
+        cache_key = self._get_cache_key(text, source_lang, target_lang)
+        if self._cache and cache_key in self._cache:
+            self.logger.debug("缓存命中")
+            return self._cache[cache_key]
+            
         self.logger.info("使用分块翻译策略")
         
         # 分割文本
@@ -533,6 +559,10 @@ class TranslatorBase(abc.ABC):
         # 合并结果
         result = self._merge_translated_texts(translated_chunks, **kwargs)
         
+        # 更新缓存
+        if self._cache is not None:
+            self._update_cache(cache_key, result)
+            
         return result
 
     def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
@@ -542,31 +572,156 @@ class TranslatorBase(abc.ABC):
             
         self.logger.info(f"并行翻译 {len(texts)} 个文本")
         
-        # 分批处理
+        # 检查缓存
+        cached_results = []
+        remaining_texts = []
+        remaining_indices = []
+        
+        if self._cache is not None:
+            for i, text in enumerate(texts):
+                cache_key = self._get_cache_key(text, source_lang, target_lang)
+                if cache_key in self._cache:
+                    self.logger.debug(f"缓存命中: {text[:50]}...")
+                    cached_results.append((i, self._cache[cache_key]))
+                else:
+                    remaining_texts.append(text)
+                    remaining_indices.append(i)
+        else:
+            remaining_texts = texts
+            remaining_indices = list(range(len(texts)))
+            
+        # 如果所有文本都在缓存中，则直接返回结果
+        if not remaining_texts:
+            # 按照原始顺序排列结果
+            results = [None] * len(texts)
+            for index, result in cached_results:
+                results[index] = result
+            return results
+            
+        # 分批处理未缓存的文本
         batch_size = kwargs.get('batch_size', self.config.batch_size)
-        batches = [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
+        batches = [remaining_texts[i:i + batch_size] for i in range(0, len(remaining_texts), batch_size)]
         
         results = []
         for batch in batches:
             batch_results = self._process_batch_parallel(batch, source_lang, target_lang, **kwargs)
             results.extend(batch_results)
             
-        return results
+        # 将结果保存到缓存中
+        if self._cache is not None:
+            for i, result in enumerate(results):
+                cache_key = self._get_cache_key(remaining_texts[i], source_lang, target_lang)
+                self._update_cache(cache_key, result)
+                
+        # 合并缓存的结果和新翻译的结果
+        final_results = [None] * len(texts)
+        
+        # 填充缓存的结果
+        for index, result in cached_results:
+            final_results[index] = result
+            
+        # 填充新翻译的结果
+        for i, result in enumerate(results):
+            final_index = remaining_indices[i]
+            final_results[final_index] = result
+            
+        return final_results
 
     def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
         """批量翻译（列表输入）"""
-        return self._translate_parallel(texts, source_lang, target_lang, **kwargs)
+        # 检查缓存
+        cached_results = []
+        remaining_texts = []
+        remaining_indices = []
+        
+        if self._cache is not None:
+            for i, text in enumerate(texts):
+                cache_key = self._get_cache_key(text, source_lang, target_lang)
+                if cache_key in self._cache:
+                    self.logger.debug(f"缓存命中: {text[:50]}...")
+                    cached_results.append((i, self._cache[cache_key]))
+                else:
+                    remaining_texts.append(text)
+                    remaining_indices.append(i)
+        else:
+            remaining_texts = texts
+            remaining_indices = list(range(len(texts)))
+            
+        # 如果所有文本都在缓存中，则直接返回结果
+        if not remaining_texts:
+            # 按照原始顺序排列结果
+            results = [None] * len(texts)
+            for index, result in cached_results:
+                results[index] = result
+            return results
+            
+        # 翻译未缓存的文本
+        translated_texts = self._translate_parallel(remaining_texts, source_lang, target_lang, **kwargs)
+        
+        # 合并缓存的结果和新翻译的结果
+        final_results = [None] * len(texts)
+        
+        # 填充缓存的结果
+        for index, result in cached_results:
+            final_results[index] = result
+            
+        # 填充新翻译的结果
+        for i, result in enumerate(translated_texts):
+            final_index = remaining_indices[i]
+            final_results[final_index] = result
+            
+        return final_results
 
     def _translate_dict(self, text_dict: Dict, source_lang: str, target_lang: str, **kwargs) -> Dict:
         """字典翻译（保持结构）"""
-        # 提取所有文本值
-        keys, texts = zip(*text_dict.items())
+        # 构建缓存键列表
+        keys = list(text_dict.keys())
+        texts = list(text_dict.values())
+        cache_keys = [self._get_cache_key(text, source_lang, target_lang) for text in texts]
         
-        # 批量翻译
-        translated_texts = self._translate_batch(list(texts), source_lang, target_lang, **kwargs)
+        # 检查缓存
+        cached_results = {}
+        remaining_items = {}
         
-        # 重建字典
-        return dict(zip(keys, translated_texts))
+        if self._cache is not None:
+            for key, text, cache_key in zip(keys, texts, cache_keys):
+                if cache_key in self._cache:
+                    self.logger.debug(f"缓存命中: {text[:50]}...")
+                    cached_results[key] = self._cache[cache_key]
+                else:
+                    remaining_items[key] = text
+        else:
+            remaining_items = text_dict.copy()
+            
+        # 如果所有文本都在缓存中，则直接返回结果
+        if not remaining_items:
+            return cached_results
+            
+        # 提取未缓存的文本值
+        remaining_keys, remaining_texts = zip(*remaining_items.items()) if remaining_items else ([], [])
+        remaining_keys = list(remaining_keys)
+        remaining_texts = list(remaining_texts)
+        
+        # 批量翻译未缓存的文本
+        translated_texts = self._translate_batch(remaining_texts, source_lang, target_lang, **kwargs)
+        
+        # 保存新翻译结果到缓存
+        if self._cache is not None:
+            for i, text in enumerate(remaining_texts):
+                cache_key = self._get_cache_key(text, source_lang, target_lang)
+                self._update_cache(cache_key, translated_texts[i])
+        
+        # 组合最终结果
+        final_result = {}
+        
+        # 添加缓存的结果
+        final_result.update(cached_results)
+        
+        # 添加新翻译的结果
+        for i, key in enumerate(remaining_keys):
+            final_result[key] = translated_texts[i]
+            
+        return final_result
 
     # ==================== 分割策略实现 ====================
     
@@ -764,12 +919,13 @@ class TranslatorBase(abc.ABC):
 
     def _update_cache(self, key: str, value: str):
         """更新缓存"""
-        if len(self._cache) >= self.config.cache_size:
-            # 简单的LRU策略：移除第一个元素
-            self._cache.pop(next(iter(self._cache)))
+        if self.config.cache_size:
+            if len(self._cache) >= self.config.cache_size:
+                # 简单的LRU策略：移除第一个元素
+                self._cache.pop(next(iter(self._cache)))
         self._cache[key] = value
 
-    def enable_memory_cache(self, max_size: int = 1000):
+    def enable_memory_cache(self, max_size: Optional[int] = None):
         """启用内存缓存"""
         self.config.enable_cache = True
         self.config.cache_size = max_size
@@ -870,21 +1026,21 @@ class TranslatorBase(abc.ABC):
     def get_performance_metrics(self) -> Dict[str, Any]:
         """获取性能指标"""
         return self._metrics.copy() if self._metrics else {}
-
-# 便捷函数
-def create_translator(service_name: str, **kwargs) -> TranslatorBase:
-    """
-    创建翻译器实例的便捷函数
     
-    Args:
-        service_name: 服务名称
-        **kwargs: 配置参数
-        
-    Returns:
-        翻译器实例
-    """
-    # 动态导入服务类（实际实现时需要根据服务名映射）
-    # 这里只是示意，实际实现需要服务注册机制
-    from translator.services import get_service_class
-    service_class = get_service_class(service_name)
-    return service_class(**kwargs)
+    # ==================== 其他工具 ====================
+
+    def get_json_patch(self, json1: Union[Dict,List], json2: Union[Dict,List]) -> List[Dict]:
+        """比较两个JSON对象"""
+        try:
+            import jsonpatch
+        except ImportError:
+            raise ImportError("请安装jsonpatch库以使用此功能")
+        return jsonpatch.make_patch(json1, json2).patch
+    
+    def apply_json_patch(self, json: Union[Dict,List], patch: List[Dict]) -> Union[Dict,List]:
+        """应用JSON补丁"""
+        try:
+            import jsonpatch
+        except ImportError:
+            raise ImportError("请安装jsonpatch库以使用此功能")
+        return jsonpatch.apply_patch(json, patch)

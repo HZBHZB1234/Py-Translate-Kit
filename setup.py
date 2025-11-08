@@ -19,9 +19,8 @@ REQUIRED = [
     'requests'
 ]
 
-# What packages are optional?
 EXTRAS = {
-    # 'fancy feature': ['django'],
+    'extras': ['jsonpatch']
 }
 
 # The rest you shouldn't have to touch too much :)
