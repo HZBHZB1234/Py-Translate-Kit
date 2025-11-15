@@ -2,6 +2,7 @@
 translator/base.py
 
 翻译器基类，提供统一的翻译接口和可扩展的架构。
+重构版本：优化缓存机制、策略路由和批量处理逻辑
 """
 
 import abc
@@ -95,6 +96,59 @@ class Metadata:
     def __post_init__(self):
         if self.custom_override_content is None:
             self.custom_override_content = {}
+
+
+def retry_on_failure(max_retries: int = 3, retry_strategy: RetryStrategy = RetryStrategy.EXPONENTIAL):
+    """重试装饰器"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self: 'TranslatorBase', *args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(self, *args, **kwargs)
+                    
+                except Exception as e:
+                    last_exception = e
+                    self.logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
+                    
+                    if attempt == max_retries:
+                        break
+                        
+                    # 计算延迟
+                    delay = self._calculate_retry_delay(attempt, retry_strategy)
+                    self.logger.info(f"等待 {delay:.2f} 秒后重试")
+                    time.sleep(delay)
+                    
+                    # 错误处理
+                    self._handle_retry_error(e, attempt, **kwargs)
+            
+            # 所有重试都失败
+            raise self._wrap_exception(last_exception, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def with_cache(func):
+    """缓存装饰器"""
+    @wraps(func)
+    def wrapper(self:'TranslatorBase', text, source_lang, target_lang, **kwargs):
+        # 检查缓存
+        cache_key = self._get_cache_key(text, source_lang, target_lang)
+        if self._cache and cache_key in self._cache:
+            self.logger.debug("缓存命中")
+            return self._cache[cache_key]
+        
+        # 执行实际函数
+        result = func(self, text, source_lang, target_lang, **kwargs)
+        
+        # 更新缓存
+        if self._cache is not None:
+            self._update_cache(cache_key, result)
+            
+        return result
+    return wrapper
 
 
 class TranslatorBase(abc.ABC):
@@ -234,26 +288,219 @@ class TranslatorBase(abc.ABC):
         source_lang = source_lang or self.config.source_lang
         target_lang = target_lang or self.config.target_lang
         
-        # 检查缓存
-        cache_key = self._get_cache_key(text, source_lang, target_lang)
-        if self._cache and cache_key in self._cache:
-            self.logger.debug("缓存命中")
-            return self._cache[cache_key]
+        # 路由到合适的翻译策略
+        translator_func = self._route_translation_strategy(text, strategy, **kwargs)
+        return translator_func(text, source_lang, target_lang, **kwargs)
+
+    # ==================== 翻译策略路由 ====================
+    
+    def _route_translation_strategy(self, text: str, strategy: str = 'auto', **kwargs) -> Callable:
+        """
+        统一的路由策略
         
-        if strategy == 'raw':
-            result = self._translate_single_raw(text, source_lang, target_lang, **kwargs)
+        Args:
+            text: 输入文本
+            strategy: 翻译策略
+            **kwargs: 额外参数
+            
+        Returns:
+            翻译函数
+        """
+        if strategy == 'auto':
+            # 智能策略选择
+            text_length = len(text)
+            
+            if text_length <= self.config.text_max_length:
+                return self._translate_direct
+            elif text_length <= self.config.text_max_length * 5:  # 中等长度
+                return self._translate_chunked
+            else:  # 超长文本
+                return self._translate_parallel_chunked
+        elif strategy == 'raw':
+            return self._translate_direct
         elif strategy == 'chunk':
-            result = self._translate_chunked(text, source_lang, target_lang, **kwargs)
+            return self._translate_chunked
         elif strategy == 'parallel':
-            result = self._translate_parallel([text], source_lang, target_lang, **kwargs)[0]
-        else:  # auto
-            result = self._translate_single(text, source_lang, target_lang, **kwargs)
+            return self._translate_parallel_chunked
+        else:
+            self.logger.warning(f"未知策略: {strategy}，使用默认策略")
+            return self._translate_direct
+
+    # ==================== 核心翻译实现 ====================
+    
+    def _translate_single(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """单文本翻译（自动策略选择）"""
+        translator_func = self._route_translation_strategy(text, 'auto', **kwargs)
+        return translator_func(text, source_lang, target_lang, **kwargs)
+
+    @with_cache
+    @retry_on_failure(max_retries=3, retry_strategy=RetryStrategy.EXPONENTIAL)
+    def _translate_direct(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """直接API翻译（无分割）"""
+        self.logger.debug(f"直接翻译: {text[:50]}...")
+        
+        # 应用速率限制
+        self._apply_rate_limiting()
+        
+        # 调用API
+        response = self._call_translate_api(text, source_lang, target_lang, **kwargs)
+        
+        # 解析响应
+        result = self._parse_api_response(response, **kwargs)
+        
+        # 更新使用量统计
+        self._update_usage_metrics(text, result)
+        
+        return result
+
+    @with_cache
+    def _translate_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """分块翻译（串行）"""
+        self.logger.info("使用分块翻译策略")
+        
+        # 分割文本
+        chunks = self._split_long_text(text, **kwargs)
+        if isinstance(chunks, str):
+            chunks = [chunks]
+            
+        self.logger.debug(f"分割为 {len(chunks)} 个片段")
+        
+        # 串行翻译各个片段
+        translated_chunks = []
+        for chunk in chunks:
+            translated = self._translate_direct(chunk, source_lang, target_lang, **kwargs)
+            translated_chunks.append(translated)
+        
+        # 合并结果
+        result = self._merge_translated_texts(translated_chunks, **kwargs)
+            
+        return result
+
+    @with_cache
+    def _translate_parallel_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """并行分块翻译"""
+        self.logger.info("使用并行分块翻译策略")
+        
+        # 分割文本
+        chunks = self._split_long_text(text, **kwargs)
+        if isinstance(chunks, str):
+            chunks = [chunks]
+            
+        self.logger.debug(f"分割为 {len(chunks)} 个片段")
+        
+        # 并行翻译各个片段
+        translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, **kwargs)
+        
+        # 合并结果
+        result = self._merge_translated_texts(translated_chunks, **kwargs)
+            
+        return result
+
+    def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+        """批量翻译（列表输入）"""
+        return self._process_batch_with_cache(
+            texts, source_lang, target_lang, 
+            self._translate_parallel, **kwargs
+        )
+
+    def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+        """并行翻译"""
+        if len(texts) == 1:
+            return [self._translate_direct(texts[0], source_lang, target_lang, **kwargs)]
+            
+        self.logger.info(f"并行翻译 {len(texts)} 个文本")
+        
+        # 使用统一的批量处理逻辑
+        return self._process_batch_parallel(texts, source_lang, target_lang, **kwargs)
+
+    def _translate_dict(self, text_dict: Dict, source_lang: str, target_lang: str, **kwargs) -> Dict:
+        """字典翻译（保持结构）"""
+        # 提取键值
+        keys = list(text_dict.keys())
+        texts = list(text_dict.values())
+        
+        # 批量翻译值
+        translated_texts = self._translate_batch(texts, source_lang, target_lang, **kwargs)
+        
+        # 重建字典
+        return dict(zip(keys, translated_texts))
+
+    # ==================== 统一的批量处理逻辑 ====================
+    
+    def _process_batch_with_cache(self, texts: List[str], source_lang: str, target_lang: str, 
+                                 processor_func: Callable, **kwargs) -> List[str]:
+        """
+        带缓存的批量处理通用逻辑
+        
+        Args:
+            texts: 文本列表
+            source_lang: 源语言
+            target_lang: 目标语言
+            processor_func: 处理函数
+            **kwargs: 额外参数
+            
+        Returns:
+            处理结果列表
+        """
+        # 统一的缓存检查
+        cached_results = []
+        remaining_texts = []
+        remaining_indices = []
+        
+        for i, text in enumerate(texts):
+            cache_key = self._get_cache_key(text, source_lang, target_lang)
+            if self._cache and cache_key in self._cache:
+                self.logger.debug(f"缓存命中: {text[:50]}...")
+                cached_results.append((i, self._cache[cache_key]))
+            else:
+                remaining_texts.append(text)
+                remaining_indices.append(i)
+        
+        # 如果所有文本都在缓存中，则直接返回结果
+        if not remaining_texts:
+            return self._merge_batch_results(texts, cached_results, [], [])
+        
+        # 处理未缓存的内容
+        processed_results = processor_func(remaining_texts, source_lang, target_lang, **kwargs)
         
         # 更新缓存
         if self._cache is not None:
-            self._update_cache(cache_key, result)
+            for i, result in enumerate(processed_results):
+                cache_key = self._get_cache_key(remaining_texts[i], source_lang, target_lang)
+                self._update_cache(cache_key, result)
+        
+        # 合并结果
+        return self._merge_batch_results(texts, cached_results, processed_results, remaining_indices)
+
+    def _merge_batch_results(self, original_texts: List[str], 
+                            cached_results: List[Tuple[int, str]],
+                            processed_results: List[str],
+                            processed_indices: List[int]) -> List[str]:
+        """
+        合并批量处理结果
+        
+        Args:
+            original_texts: 原始文本列表
+            cached_results: 缓存结果列表 (索引, 结果)
+            processed_results: 新处理结果列表
+            processed_indices: 新处理结果的索引列表
             
-        return result
+        Returns:
+            合并后的结果列表
+        """
+        # 初始化结果列表
+        results = [None] * len(original_texts)
+        
+        # 填充缓存的结果
+        for index, result in cached_results:
+            results[index] = result
+            
+        # 填充新处理的结果
+        for i, result in enumerate(processed_results):
+            original_index = processed_indices[i]
+            results[original_index] = result
+            
+        return results
 
     # ==================== 文本处理管道 ====================
     
@@ -314,7 +561,7 @@ class TranslatorBase(abc.ABC):
                           **kwargs) -> Union[str, List[str]]:
         """应用翻译"""
         if isinstance(text, str):
-            return self._translate_single_raw(text, source_lang, target_lang, **kwargs)
+            return self._translate_direct(text, source_lang, target_lang, **kwargs)
         else:
             return self._translate_parallel(text, source_lang, target_lang, **kwargs)
 
@@ -368,241 +615,23 @@ class TranslatorBase(abc.ABC):
         """
         pass
 
-    # ==================== 翻译策略实现 ====================
-    
-    def _translate_single(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """单文本翻译（自动策略选择）"""
-        # 检查缓存
-        cache_key = self._get_cache_key(text, source_lang, target_lang)
-        if self._cache and cache_key in self._cache:
-            self.logger.debug("缓存命中")
-            return self._cache[cache_key]
+    def get_special_api_reference(self) -> Dict[str, Any]:
+        """
+        获取特殊API方法的引用规范
         
-        # 根据文本长度选择策略
-        if len(text) > self.config.text_max_length:
-            strategy = 'chunk'
-        else:
-            strategy = 'raw'
-            
-        result = self.translate_with_strategy(text, strategy, source_lang, target_lang, **kwargs)
-        
-        # 更新缓存
-        if self._cache is not None:
-            self._update_cache(cache_key, result)
-            
-        return result
-
-    def _translate_single_raw(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """原始API翻译（无分割）"""
-        cache_key = self._get_cache_key(text, source_lang, target_lang)
-        if self._cache and cache_key in self._cache:
-            self.logger.debug("缓存命中")
-            return self._cache[cache_key]
-        
-        self.logger.debug(f"直接翻译: {text[:50]}...")
-        
-        # 应用速率限制
-        self._apply_rate_limiting()
-        
-        # 重试机制
-        response = self._retry_on_failure(
-            self._call_translate_api,
-            text, source_lang, target_lang, **kwargs
-        )
-        
-        # 解析响应
-        result = self._parse_api_response(response, **kwargs)
-        
-        # 更新使用量统计
-        self._update_usage_metrics(text, result)
-        
-        # 更新缓存
-        if self._cache is not None:
-            self._update_cache(cache_key, result)
-            
-        return result
-
-    def _translate_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """分块翻译"""
-        cache_key = self._get_cache_key(text, source_lang, target_lang)
-        if self._cache and cache_key in self._cache:
-            self.logger.debug("缓存命中")
-            return self._cache[cache_key]
-            
-        self.logger.info("使用分块翻译策略")
-        
-        # 分割文本
-        chunks = self._split_long_text(text, **kwargs)
-        if isinstance(chunks, str):
-            chunks = [chunks]
-            
-        self.logger.debug(f"分割为 {len(chunks)} 个片段")
-        
-        # 翻译各个片段
-        translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, **kwargs)
-        
-        # 合并结果
-        result = self._merge_translated_texts(translated_chunks, **kwargs)
-        
-        # 更新缓存
-        if self._cache is not None:
-            self._update_cache(cache_key, result)
-            
-        return result
-
-    def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
-        """并行翻译"""
-        if len(texts) == 1:
-            return [self._translate_single_raw(texts[0], source_lang, target_lang, **kwargs)]
-            
-        self.logger.info(f"并行翻译 {len(texts)} 个文本")
-        
-        # 检查缓存
-        cached_results = []
-        remaining_texts = []
-        remaining_indices = []
-        
-        if self._cache is not None:
-            for i, text in enumerate(texts):
-                cache_key = self._get_cache_key(text, source_lang, target_lang)
-                if cache_key in self._cache:
-                    self.logger.debug(f"缓存命中: {text[:50]}...")
-                    cached_results.append((i, self._cache[cache_key]))
-                else:
-                    remaining_texts.append(text)
-                    remaining_indices.append(i)
-        else:
-            remaining_texts = texts
-            remaining_indices = list(range(len(texts)))
-            
-        # 如果所有文本都在缓存中，则直接返回结果
-        if not remaining_texts:
-            results = [None] * len(texts)
-            for index, result in cached_results:
-                results[index] = result
-            return results
-            
-        # 分批处理未缓存的文本
-        batch_size = kwargs.get('batch_size', self.config.batch_size)
-        batches = [remaining_texts[i:i + batch_size] for i in range(0, len(remaining_texts), batch_size)]
-        
-        results = []
-        for batch in batches:
-            batch_results = self._process_batch_parallel(batch, source_lang, target_lang, **kwargs)
-            results.extend(batch_results)
-            
-        # 将结果保存到缓存中
-        if self._cache is not None:
-            for i, result in enumerate(results):
-                cache_key = self._get_cache_key(remaining_texts[i], source_lang, target_lang)
-                self._update_cache(cache_key, result)
-                
-        # 合并缓存的结果和新翻译的结果
-        final_results = [None] * len(texts)
-        
-        # 填充缓存的结果
-        for index, result in cached_results:
-            final_results[index] = result
-            
-        # 填充新翻译的结果
-        for i, result in enumerate(results):
-            final_index = remaining_indices[i]
-            final_results[final_index] = result
-            
-        return final_results
-
-    def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
-        """批量翻译（列表输入）"""
-        # 检查缓存
-        cached_results = []
-        remaining_texts = []
-        remaining_indices = []
-        
-        if self._cache is not None:
-            for i, text in enumerate(texts):
-                cache_key = self._get_cache_key(text, source_lang, target_lang)
-                if cache_key in self._cache:
-                    self.logger.debug(f"缓存命中: {text[:50]}...")
-                    cached_results.append((i, self._cache[cache_key]))
-                else:
-                    remaining_texts.append(text)
-                    remaining_indices.append(i)
-        else:
-            remaining_texts = texts
-            remaining_indices = list(range(len(texts)))
-            
-        # 如果所有文本都在缓存中，则直接返回结果
-        if not remaining_texts:
-            results = [None] * len(texts)
-            for index, result in cached_results:
-                results[index] = result
-            return results
-            
-        # 翻译未缓存的文本
-        translated_texts = self._translate_parallel(remaining_texts, source_lang, target_lang, **kwargs)
-        
-        # 合并缓存的结果和新翻译的结果
-        final_results = [None] * len(texts)
-        
-        # 填充缓存的结果
-        for index, result in cached_results:
-            final_results[index] = result
-            
-        # 填充新翻译的结果
-        for i, result in enumerate(translated_texts):
-            final_index = remaining_indices[i]
-            final_results[final_index] = result
-            
-        return final_results
-
-    def _translate_dict(self, text_dict: Dict, source_lang: str, target_lang: str, **kwargs) -> Dict:
-        """字典翻译（保持结构）"""
-        # 构建缓存键列表
-        keys = list(text_dict.keys())
-        texts = list(text_dict.values())
-        cache_keys = [self._get_cache_key(text, source_lang, target_lang) for text in texts]
-        
-        # 检查缓存
-        cached_results = {}
-        remaining_items = {}
-        
-        if self._cache is not None:
-            for key, text, cache_key in zip(keys, texts, cache_keys):
-                if cache_key in self._cache:
-                    self.logger.debug(f"缓存命中: {text[:50]}...")
-                    cached_results[key] = self._cache[cache_key]
-                else:
-                    remaining_items[key] = text
-        else:
-            remaining_items = text_dict.copy()
-            
-        # 如果所有文本都在缓存中，则直接返回结果
-        if not remaining_items:
-            return cached_results
-            
-        # 提取未缓存的文本值
-        remaining_keys, remaining_texts = zip(*remaining_items.items()) if remaining_items else ([], [])
-        remaining_keys = list(remaining_keys)
-        remaining_texts = list(remaining_texts)
-        
-        # 批量翻译未缓存的文本
-        translated_texts = self._translate_batch(remaining_texts, source_lang, target_lang, **kwargs)
-        
-        # 保存新翻译结果到缓存
-        if self._cache is not None:
-            for i, text in enumerate(remaining_texts):
-                cache_key = self._get_cache_key(text, source_lang, target_lang)
-                self._update_cache(cache_key, translated_texts[i])
-        
-        # 组合最终结果
-        final_result = {}
-        final_result.update(cached_results)
-        
-        # 添加新翻译的结果
-        for i, key in enumerate(remaining_keys):
-            final_result[key] = translated_texts[i]
-            
-        return final_result
+        Returns:
+            包含特殊API方法信息的字典，格式为:
+            {
+                "method_name": {
+                    "description": "方法描述",
+                    "parameters": "参数说明",
+                    "return_type": "返回值类型",
+                    "example": "使用示例"
+                }
+            }
+        """
+        # 默认实现返回空字典，子类应覆盖此方法以提供特殊API信息
+        return {}
 
     # ==================== 分割策略实现 ====================
     
@@ -657,7 +686,7 @@ class TranslatorBase(abc.ABC):
         futures = []
         for text in texts:
             future = self._executor.submit(
-                self._translate_single_raw, text, source_lang, target_lang, **kwargs
+                self._translate_direct, text, source_lang, target_lang, **kwargs
             )
             futures.append(future)
             
@@ -681,45 +710,6 @@ class TranslatorBase(abc.ABC):
 
     # ==================== 错误处理与重试 ====================
     
-    def _retry_on_failure(self, func: Callable, *args, **kwargs) -> Any:
-        """
-        重试装饰器实现
-        
-        Args:
-            func: 要重试的函数
-            *args: 函数参数
-            **kwargs: 函数关键字参数
-            
-        Returns:
-            函数执行结果
-        """
-        max_retries = kwargs.pop('max_retries', self.config.max_retries)
-        retry_strategy = kwargs.pop('retry_strategy', self.config.retry_strategy)
-        
-        last_exception = None
-        
-        for attempt in range(max_retries + 1):
-            try:
-                return func(*args, **kwargs)
-                
-            except Exception as e:
-                last_exception = e
-                self.logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
-                
-                if attempt == max_retries:
-                    break
-                    
-                # 计算延迟
-                delay = self._calculate_retry_delay(attempt, retry_strategy)
-                self.logger.info(f"等待 {delay:.2f} 秒后重试")
-                time.sleep(delay)
-                
-                # 错误处理
-                self._handle_retry_error(e, attempt, **kwargs)
-        
-        # 所有重试都失败
-        raise self._wrap_exception(last_exception, *args, **kwargs)
-
     def _calculate_retry_delay(self, attempt: int, strategy: RetryStrategy) -> float:
         """计算重试延迟"""
         if strategy == RetryStrategy.EXPONENTIAL:

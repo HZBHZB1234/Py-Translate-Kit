@@ -483,3 +483,90 @@ class BaiduTranslator(TranslatorBase):
     def get_supported_domains(self) -> Dict[str, str]:
         """获取支持的翻译领域"""
         return self.SUPPORTED_DOMAINS.copy()
+    
+    def get_special_api_reference(self) -> Dict[str, Any]:
+        """
+        获取百度翻译特殊API方法的引用规范
+        
+        Returns:
+            包含特殊API方法信息的字典
+        """
+        return {
+            "detect_language": {
+                "description": "语种识别，自动识别输入文本的语言",
+                "parameters": {
+                    "text": "要识别的文本"
+                },
+                "return_type": "Dict[str, Any] 包含识别结果的字典",
+                "example": "translator.detect_language('你好世界')"
+            },
+            "create_llm_doc_translation_job": {
+                "description": "创建LLM文档翻译任务",
+                "parameters": {
+                    "file_path": "本地文件路径",
+                    "file_name": "文件名",
+                    "from_lang": "源语言",
+                    "to_lang": "目标语言",
+                    "file_format": "文件格式",
+                    "output_format": "输出格式，可选"
+                },
+                "return_type": "Dict[str, Any] 包含任务ID的响应字典",
+                "example": "translator.create_llm_doc_translation_job('./doc.txt', 'doc.txt', 'zh', 'en', 'txt')"
+            },
+            "query_doc_translation": {
+                "description": "查询文档翻译结果",
+                "parameters": {
+                    "request_id": "翻译任务ID"
+                },
+                "return_type": "Dict[str, Any] 包含翻译状态和结果的字典",
+                "example": "translator.query_doc_translation('request_id_123')"
+            },
+            "create_doc_quote": {
+                "description": "创建文档翻译报价",
+                "parameters": {
+                    "file_path": "本地文件路径",
+                    "file_name": "文件名",
+                    "from_lang": "源语言",
+                    "to_lang": "目标语言",
+                    "file_format": "文件格式"
+                },
+                "return_type": "Dict[str, Any] 包含报价信息的响应字典",
+                "example": "translator.create_doc_quote('./doc.txt', 'doc.txt', 'zh', 'en', 'txt')"
+            },
+            "query_doc_quote": {
+                "description": "查询文档翻译报价结果",
+                "parameters": {
+                    "file_id": "文件ID"
+                },
+                "return_type": "Dict[str, Any] 包含报价查询结果的字典",
+                "example": "translator.query_doc_quote('file_id_123')"
+            },
+            "translate_with_domain": {
+                "description": "领域翻译接口，针对特定领域进行优化翻译",
+                "parameters": {
+                    "text": "要翻译的文本",
+                    "domain": "翻译领域",
+                    "source_lang": "源语言（可选）",
+                    "target_lang": "目标语言（可选）"
+                },
+                "return_type": "str 翻译结果",
+                "example": "translator.translate_with_domain('专业术语', 'tech', 'zh', 'en')"
+            },
+            "translate_with_llm": {
+                "description": "LLM翻译接口，使用大语言模型进行翻译",
+                "parameters": {
+                    "text": "要翻译的文本",
+                    "source_lang": "源语言（可选）",
+                    "target_lang": "目标语言（可选）",
+                    "format": "文本格式，text或html"
+                },
+                "return_type": "str 翻译结果",
+                "example": "translator.translate_with_llm('<p>HTML文本</p>', 'zh', 'en', 'html')"
+            },
+            "get_supported_domains": {
+                "description": "获取支持的翻译领域列表",
+                "parameters": {},
+                "return_type": "Dict[str, str] 支持的领域字典",
+                "example": "translator.get_supported_domains()"
+            }
+        }
