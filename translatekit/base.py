@@ -589,6 +589,7 @@ class TranslatorBase(abc.ABC):
         if not self._executor:
             self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
             
+        # 创建futures并保持与输入文本的对应关系
         futures = []
         for text in texts:
             future = self._executor.submit(
@@ -596,8 +597,9 @@ class TranslatorBase(abc.ABC):
             )
             futures.append(future)
             
+        # 按照提交顺序收集结果，确保顺序一致
         results = []
-        for future in as_completed(futures):
+        for future in futures:
             try:
                 result = future.result()
                 results.append(result)

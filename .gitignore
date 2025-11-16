@@ -4,6 +4,9 @@ dev
 test.py
 test*.py
 test_assets/
+*.docx
+*.pdf
+*.pptx
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
