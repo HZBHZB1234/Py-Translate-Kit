@@ -2,7 +2,7 @@
 translator/base.py
 
 翻译器基类，提供统一的翻译接口和可扩展的架构。
-重构版本：优化缓存机制、策略路由和批量处理逻辑
+重构版本：简化翻译逻辑，添加方法选择参数
 """
 
 import abc
@@ -229,17 +229,19 @@ class TranslatorBase(abc.ABC):
     
     # ==================== 核心翻译接口 ====================
     
-    def translate(self, text: Union[str, List, Dict], 
+    def translate(self, text: Union[str, List[str]], 
                   source_lang: Optional[str] = None,
                   target_lang: Optional[str] = None,
-                  **kwargs) -> Union[str, List, Dict]:
+                  method: Optional[str] = None,
+                  **kwargs) -> Union[str, List[str]]:
         """
-        智能翻译主接口，自动选择最佳处理策略
+        智能翻译主接口
         
         Args:
-            text: 输入文本，支持字符串、列表、字典
+            text: 输入文本，支持字符串或字符串列表
             source_lang: 源语言，默认使用配置
             target_lang: 目标语言，默认使用配置
+            method: 翻译方法选择，子类可自定义实现
             **kwargs: 额外参数
             
         Returns:
@@ -252,91 +254,100 @@ class TranslatorBase(abc.ABC):
         
         # 根据输入类型选择处理方式
         if isinstance(text, str):
-            return self._translate_single(text, source_lang, target_lang, **kwargs)
+            return self._translate_single(text, source_lang, target_lang, method, **kwargs)
         elif isinstance(text, list):
-            return self._translate_batch(text, source_lang, target_lang, **kwargs)
-        elif isinstance(text, dict):
-            return self._translate_dict(text, source_lang, target_lang, **kwargs)
+            return self._translate_batch(text, source_lang, target_lang, method, **kwargs)
         else:
-            raise ValueError(f"不支持的文本类型: {type(text)}")
+            raise ValueError(f"不支持的文本类型: {type(text)}，只支持 str 和 List[str]")
 
     def translate_batch(self, texts: List[str],
                         source_lang: Optional[str] = None,
                         target_lang: Optional[str] = None,
+                        method: Optional[str] = None,
                         **kwargs) -> List[str]:
         """批量翻译接口"""
-        return self.translate(texts, source_lang, target_lang, **kwargs)
+        return self.translate(texts, source_lang, target_lang, method, **kwargs)
 
-    def translate_with_strategy(self, text: str,
-                                strategy: str = 'auto',
-                                source_lang: Optional[str] = None,
-                                target_lang: Optional[str] = None,
-                                **kwargs) -> str:
-        """
-        指定策略的翻译接口（高级功能）
-        
-        Args:
-            text: 输入文本
-            strategy: 翻译策略 ('raw', 'chunk', 'parallel', 'auto')
-            source_lang: 源语言
-            target_lang: 目标语言
-            **kwargs: 额外参数
-            
-        Returns:
-            翻译结果
-        """
-        source_lang = source_lang or self.config.source_lang
-        target_lang = target_lang or self.config.target_lang
-        
-        # 路由到合适的翻译策略
-        translator_func = self._route_translation_strategy(text, strategy, **kwargs)
-        return translator_func(text, source_lang, target_lang, **kwargs)
-
-    # ==================== 翻译策略路由 ====================
+    # ==================== 核心翻译实现 ====================
     
-    def _route_translation_strategy(self, text: str, strategy: str = 'auto', **kwargs) -> Callable:
+    def _translate_single(self, text: str, source_lang: str, target_lang: str, 
+                         method: Optional[str] = None, **kwargs) -> str:
+        """单文本翻译"""
+        # 选择翻译方法
+        translate_func = self._select_translate_method(method, **kwargs)
+        
+        # 根据文本长度选择策略
+        if len(text) <= self.config.text_max_length:
+            return translate_func(text, source_lang, target_lang, **kwargs)
+        else:
+            return self._translate_long_text(text, source_lang, target_lang, translate_func, **kwargs)
+
+    def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str,
+                        method: Optional[str] = None, **kwargs) -> List[str]:
+        """批量翻译"""
+        if len(texts) == 1:
+            return [self._translate_single(texts[0], source_lang, target_lang, method, **kwargs)]
+        
+        # 选择翻译方法
+        translate_func = self._select_translate_method(method, **kwargs)
+        
+        return self._process_batch_with_cache(
+            texts, source_lang, target_lang, translate_func, **kwargs
+        )
+
+    def _select_translate_method(self, method: Optional[str] = None, **kwargs) -> Callable:
         """
-        统一的路由策略
+        选择翻译方法
         
         Args:
-            text: 输入文本
-            strategy: 翻译策略
+            method: 方法名称，None表示使用默认方法
             **kwargs: 额外参数
             
         Returns:
             翻译函数
         """
-        if strategy == 'auto':
-            # 智能策略选择
-            text_length = len(text)
-            
-            if text_length <= self.config.text_max_length:
-                return self._translate_direct
-            elif text_length <= self.config.text_max_length * 5:  # 中等长度
-                return self._translate_chunked
-            else:  # 超长文本
-                return self._translate_parallel_chunked
-        elif strategy == 'raw':
+        if method is None:
             return self._translate_direct
-        elif strategy == 'chunk':
-            return self._translate_chunked
-        elif strategy == 'parallel':
-            return self._translate_parallel_chunked
+        
+        # 子类可以重写此方法以支持多种翻译方法
+        method_name = f"_translate_{method}"
+        if hasattr(self, method_name):
+            return getattr(self, method_name)
         else:
-            self.logger.warning(f"未知策略: {strategy}，使用默认策略")
+            self.logger.warning(f"未知翻译方法: {method}，使用默认方法")
             return self._translate_direct
 
-    # ==================== 核心翻译实现 ====================
-    
-    def _translate_single(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """单文本翻译（自动策略选择）"""
-        translator_func = self._route_translation_strategy(text, 'auto', **kwargs)
-        return translator_func(text, source_lang, target_lang, **kwargs)
+    def _translate_long_text(self, text: str, source_lang: str, target_lang: str,
+                            translate_func: Callable, **kwargs) -> str:
+        """长文本翻译"""
+        self.logger.info(f"文本过长 ({len(text)} 字符)，进行分割翻译")
+        
+        # 分割文本
+        chunks = self._split_long_text(text, **kwargs)
+        if isinstance(chunks, str):
+            chunks = [chunks]
+            
+        self.logger.debug(f"分割为 {len(chunks)} 个片段")
+        
+        # 并行翻译各个片段
+        if len(chunks) > 1 and self.config.max_workers > 1:
+            translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, translate_func, **kwargs)
+        else:
+            # 串行翻译
+            translated_chunks = []
+            for chunk in chunks:
+                translated = translate_func(chunk, source_lang, target_lang, **kwargs)
+                translated_chunks.append(translated)
+        
+        # 合并结果
+        result = self._merge_translated_texts(translated_chunks, **kwargs)
+            
+        return result
 
     @with_cache
     @retry_on_failure(max_retries=3, retry_strategy=RetryStrategy.EXPONENTIAL)
     def _translate_direct(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """直接API翻译（无分割）"""
+        """直接API翻译（默认方法）"""
         self.logger.debug(f"直接翻译: {text[:50]}...")
         
         # 应用速率限制
@@ -353,96 +364,30 @@ class TranslatorBase(abc.ABC):
         
         return result
 
-    @with_cache
-    def _translate_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """分块翻译（串行）"""
-        self.logger.info("使用分块翻译策略")
-        
-        # 分割文本
-        chunks = self._split_long_text(text, **kwargs)
-        if isinstance(chunks, str):
-            chunks = [chunks]
-            
-        self.logger.debug(f"分割为 {len(chunks)} 个片段")
-        
-        # 串行翻译各个片段
-        translated_chunks = []
-        for chunk in chunks:
-            translated = self._translate_direct(chunk, source_lang, target_lang, **kwargs)
-            translated_chunks.append(translated)
-        
-        # 合并结果
-        result = self._merge_translated_texts(translated_chunks, **kwargs)
-            
-        return result
-
-    @with_cache
-    def _translate_parallel_chunked(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """并行分块翻译"""
-        self.logger.info("使用并行分块翻译策略")
-        
-        # 分割文本
-        chunks = self._split_long_text(text, **kwargs)
-        if isinstance(chunks, str):
-            chunks = [chunks]
-            
-        self.logger.debug(f"分割为 {len(chunks)} 个片段")
-        
-        # 并行翻译各个片段
-        translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, **kwargs)
-        
-        # 合并结果
-        result = self._merge_translated_texts(translated_chunks, **kwargs)
-            
-        return result
-
-    def _translate_batch(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
-        """批量翻译（列表输入）"""
-        return self._process_batch_with_cache(
-            texts, source_lang, target_lang, 
-            self._translate_parallel, **kwargs
-        )
-
-    def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+    def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str,
+                           translate_func: Callable, **kwargs) -> List[str]:
         """并行翻译"""
-        if len(texts) == 1:
-            return [self._translate_direct(texts[0], source_lang, target_lang, **kwargs)]
-            
         self.logger.info(f"并行翻译 {len(texts)} 个文本")
-        
-        # 使用统一的批量处理逻辑
-        return self._process_batch_parallel(texts, source_lang, target_lang, **kwargs)
+        return self._process_batch_parallel(texts, source_lang, target_lang, translate_func, **kwargs)
 
-    def _translate_dict(self, text_dict: Dict, source_lang: str, target_lang: str, **kwargs) -> Dict:
-        """字典翻译（保持结构）"""
-        # 提取键值
-        keys = list(text_dict.keys())
-        texts = list(text_dict.values())
-        
-        # 批量翻译值
-        translated_texts = self._translate_batch(texts, source_lang, target_lang, **kwargs)
-        
-        # 重建字典
-        return dict(zip(keys, translated_texts))
-
-    # ==================== 统一的批量处理逻辑 ====================
+    # ==================== 批量处理逻辑 ====================
     
     def _process_batch_with_cache(self, texts: List[str], source_lang: str, target_lang: str, 
-                                 processor_func: Callable, **kwargs) -> List[str]:
+                                 translate_func: Callable, **kwargs) -> List[str]:
         """
-        带缓存的批量处理通用逻辑
+        带缓存的批量处理
         
         Args:
             texts: 文本列表
             source_lang: 源语言
             target_lang: 目标语言
-            processor_func: 处理函数
+            translate_func: 翻译函数
             **kwargs: 额外参数
             
         Returns:
-            处理结果列表
+            翻译结果列表
         """
-        # 统一的缓存检查
+        # 缓存检查
         cached_results = []
         remaining_texts = []
         remaining_indices = []
@@ -461,7 +406,7 @@ class TranslatorBase(abc.ABC):
             return self._merge_batch_results(texts, cached_results, [], [])
         
         # 处理未缓存的内容
-        processed_results = processor_func(remaining_texts, source_lang, target_lang, **kwargs)
+        processed_results = self._process_batch_parallel(remaining_texts, source_lang, target_lang, translate_func, **kwargs)
         
         # 更新缓存
         if self._cache is not None:
@@ -478,15 +423,6 @@ class TranslatorBase(abc.ABC):
                             processed_indices: List[int]) -> List[str]:
         """
         合并批量处理结果
-        
-        Args:
-            original_texts: 原始文本列表
-            cached_results: 缓存结果列表 (索引, 结果)
-            processed_results: 新处理结果列表
-            processed_indices: 新处理结果的索引列表
-            
-        Returns:
-            合并后的结果列表
         """
         # 初始化结果列表
         results = [None] * len(original_texts)
@@ -502,39 +438,8 @@ class TranslatorBase(abc.ABC):
             
         return results
 
-    # ==================== 文本处理管道 ====================
+    # ==================== 文本处理 ====================
     
-    def get_text_processing_pipeline(self) -> List[Callable]:
-        """获取文本处理管道，子类可覆盖以重新定义流程"""
-        return [
-            self._preprocess_text,
-            self._split_long_text,
-            self._apply_translation,
-            self._merge_translated_texts,
-            self._postprocess_text
-        ]
-
-    def execute_pipeline(self, text: str, **kwargs) -> str:
-        """执行文本处理管道"""
-        pipeline = self.get_text_processing_pipeline()
-        result = text
-        
-        for processor in pipeline:
-            result = processor(result, **kwargs)
-            self.logger.debug(f"处理器 {processor.__name__} 完成")
-            
-        return result
-
-    def _preprocess_text(self, text: str, **kwargs) -> str:
-        """文本预处理"""
-        if not self.config.enable_preprocessing:
-            return text
-            
-        processed = text.strip()
-        processed = self._custom_preprocess(processed, **kwargs)
-        
-        return processed
-
     def _split_long_text(self, text: str, **kwargs) -> Union[str, List[str]]:
         """长文本分割"""
         if len(text) <= self.config.text_max_length:
@@ -555,16 +460,6 @@ class TranslatorBase(abc.ABC):
         else:
             return self._split_by_fixed_length(text, **kwargs)
 
-    def _apply_translation(self, text: Union[str, List[str]], 
-                          source_lang: str, 
-                          target_lang: str,
-                          **kwargs) -> Union[str, List[str]]:
-        """应用翻译"""
-        if isinstance(text, str):
-            return self._translate_direct(text, source_lang, target_lang, **kwargs)
-        else:
-            return self._translate_parallel(text, source_lang, target_lang, **kwargs)
-
     def _merge_translated_texts(self, fragments: List[str], **kwargs) -> str:
         """合并翻译后的文本片段"""
         if len(fragments) == 1:
@@ -572,6 +467,16 @@ class TranslatorBase(abc.ABC):
             
         # 简单的空格合并，子类可以覆盖实现更智能的合并
         return ' '.join(fragments)
+
+    def _preprocess_text(self, text: str, **kwargs) -> str:
+        """文本预处理"""
+        if not self.config.enable_preprocessing:
+            return text
+            
+        processed = text.strip()
+        processed = self._custom_preprocess(processed, **kwargs)
+        
+        return processed
 
     def _postprocess_text(self, text: str, **kwargs) -> str:
         """后处理"""
@@ -678,7 +583,8 @@ class TranslatorBase(abc.ABC):
 
     # ==================== 并发处理 ====================
     
-    def _process_batch_parallel(self, texts: List[str], source_lang: str, target_lang: str, **kwargs) -> List[str]:
+    def _process_batch_parallel(self, texts: List[str], source_lang: str, target_lang: str,
+                               translate_func: Callable, **kwargs) -> List[str]:
         """并行处理批次"""
         if not self._executor:
             self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
@@ -686,7 +592,7 @@ class TranslatorBase(abc.ABC):
         futures = []
         for text in texts:
             future = self._executor.submit(
-                self._translate_direct, text, source_lang, target_lang, **kwargs
+                translate_func, text, source_lang, target_lang, **kwargs
             )
             futures.append(future)
             
@@ -700,13 +606,6 @@ class TranslatorBase(abc.ABC):
                 results.append("")  # 错误时返回空字符串
                 
         return results
-
-    def get_executor(self, executor_type: str = 'thread', **kwargs):
-        """获取执行器"""
-        if executor_type == 'thread':
-            return ThreadPoolExecutor(max_workers=kwargs.get('max_workers', self.config.max_workers))
-        else:
-            raise ValueError(f"不支持的执行器类型: {executor_type}")
 
     # ==================== 错误处理与重试 ====================
     
@@ -895,50 +794,3 @@ class TranslatorBase(abc.ABC):
     def get_performance_metrics(self) -> Dict[str, Any]:
         """获取性能指标"""
         return self._metrics.copy() if self._metrics else {}
-    
-    # ==================== JSON补丁翻译 ====================
-
-    def get_json_patch(self, json1: Union[Dict,List], json2: Union[Dict,List]) -> List[Dict]:
-        """比较两个JSON对象生成补丁"""
-        try:
-            import jsonpatch
-        except ImportError:
-            raise ImportError("请安装jsonpatch库以使用此功能")
-        return jsonpatch.make_patch(json1, json2).patch
-    
-    def apply_json_patch(self, json: Union[Dict,List], patch: List[Dict]) -> Union[Dict,List]:
-        """应用JSON补丁"""
-        try:
-            import jsonpatch
-        except ImportError:
-            raise ImportError("请安装jsonpatch库以使用此功能")
-        return jsonpatch.apply_patch(json, patch)
-    
-    def translate_jsonpatch(self, json_patch: List[Dict], source_lang: str, target_lang: str) -> List[Dict]:
-        """
-        翻译 JSON Patch 中的操作值
-        
-        此方法会筛选出 'add' 和 'replace' 操作，将其 'value' 字段进行翻译，
-        并将翻译后的值重新组合成新的 JSON Patch。
-        """
-        # 提取需要翻译的值（仅针对 'add' 和 'replace' 操作）
-        values_to_translate = [operation['value'] for operation in json_patch 
-                            if operation['op'] in ['add', 'replace']]
-        
-        # 执行翻译操作
-        translated_values = self.translate(values_to_translate, source_lang, target_lang)
-        
-        # 将翻译后的值重新整合进原始 patch 结构中
-        translated_patch = []
-        translation_index = 0
-        for operation in json_patch:
-            if operation['op'] in ['add', 'replace']:
-                # 创建一个新操作，使用翻译后的值替换原值
-                updated_operation = {**operation, 'value': translated_values[translation_index]}
-                translated_patch.append(updated_operation)
-                translation_index += 1
-            else:
-                # 对于其他操作类型，直接复制原始操作
-                translated_patch.append(operation)
-                
-        return translated_patch
