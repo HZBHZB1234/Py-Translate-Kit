@@ -10,7 +10,7 @@ import base64
 import hmac
 import requests
 from typing import Dict, Any, List, Optional, Union
-from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
 class BaiduTranslator(TranslatorBase):
     """百度翻译服务实现类"""
