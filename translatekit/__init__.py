@@ -9,6 +9,11 @@ from .baidu import BaiduTranslator
 from .google import GoogleTranslator
 from .deepl import DeepLTranslator
 from .microsoft import MicrosoftTranslator
+from .yandex import YandexTranslator
+from .libre import LibreTranslator
+from .mymemory import MyMemoryTranslator
+from .papago import PapagoTranslator
+from .kit import TranslationHelper
 
 __all__ = [
     'TranslatorBase',
@@ -20,6 +25,11 @@ __all__ = [
     'GoogleTranslator',
     'DeepLTranslator',
     'MicrosoftTranslator',
+    'YandexTranslator',
+    'LibreTranslator',
+    'MyMemoryTranslator',
+    'PapagoTranslator',
+    'TranslationHelper'
 ]
 
 __version__ = "1.0.0"

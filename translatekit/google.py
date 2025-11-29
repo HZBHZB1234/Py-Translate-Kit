@@ -82,8 +82,33 @@ class GoogleTranslator(TranslatorBase):
 
     def validate_config(self):
         """验证配置 - Google翻译不需要特殊配置验证"""
-        # Google翻译不需要API密钥，因此跳过此验证
-        pass
+        # Google翻译不需要API密钥，但需要验证基本配置
+        if not self.config.target_lang:
+            raise ConfigurationError("目标语言未配置")
+
+    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
+        """验证语言代码 - 支持语言代码和语言名称两种格式"""
+        supported = self.get_supported_languages()
+        
+        # 如果是'auto'且为源语言，返回True
+        if lang_code == 'auto' and lang_type == 'source':
+            return True
+            
+        # 检查是否是语言代码（如'en'）
+        for name, code in supported.items():
+            if code == lang_code:
+                return True
+                
+        # 检查是否是语言名称（如'english'）
+        return lang_code in supported
+
+    def _validate_languages(self, source_lang: str, target_lang: str):
+        """验证语言对"""
+        if not self.validate_language(source_lang, 'source'):
+            raise ValueError(f"不支持的源语言: {source_lang}")
+            
+        if not self.validate_language(target_lang, 'target'):
+            raise ValueError(f"不支持的目标语言: {target_lang}")
 
     def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
