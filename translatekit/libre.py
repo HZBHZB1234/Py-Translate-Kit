@@ -5,7 +5,7 @@ Libre翻译服务实现
 import os
 import requests
 from typing import Dict, Any, Optional
-from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
 class LibreTranslator(TranslatorBase):
     """Libre翻译服务实现类"""

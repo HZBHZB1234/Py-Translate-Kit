@@ -4,7 +4,7 @@ MyMemory翻译服务实现
 
 import requests
 from typing import Dict, Any, Optional, Union, List
-from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
 class MyMemoryTranslator(TranslatorBase):
     """MyMemory翻译服务实现类"""

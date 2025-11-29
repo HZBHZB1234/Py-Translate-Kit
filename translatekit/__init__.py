@@ -13,7 +13,10 @@ from .yandex import YandexTranslator
 from .libre import LibreTranslator
 from .mymemory import MyMemoryTranslator
 from .papago import PapagoTranslator
-from .kit import TranslationHelper
+from .linguee import LingueeTranslator
+from .pons import PonsTranslator
+from .qcri import QcriTranslator
+from .tencent import TencentTranslator
 
 __all__ = [
     'TranslatorBase',
@@ -29,7 +32,10 @@ __all__ = [
     'LibreTranslator',
     'MyMemoryTranslator',
     'PapagoTranslator',
-    'TranslationHelper'
+    'LingueeTranslator',
+    'PonsTranslator',
+    'QcriTranslator',
+    'TencentTranslator',
 ]
 
 __version__ = "1.0.0"

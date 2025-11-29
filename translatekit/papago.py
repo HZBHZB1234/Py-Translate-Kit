@@ -5,7 +5,7 @@ Papago翻译服务实现
 import json
 import requests
 from typing import Dict, Any, Optional
-from base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
 class PapagoTranslator(TranslatorBase):
     """Papago翻译服务实现类"""
