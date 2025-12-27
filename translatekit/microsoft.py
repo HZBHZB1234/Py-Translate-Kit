@@ -36,7 +36,7 @@ class MicrosoftTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持api_key, region等
         """
         config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('microsoft_api_key', kwargs.get('api_key', os.getenv('MICROSOFT_API_KEY', '')))
+        self.api_key = config.api_key.get('microsoft_api_key', kwargs.get('api_key', ''))
         self.region = config.api_key.get('microsoft_region', kwargs.get('region', ''))
         self.proxies = kwargs.get('proxies', None)
         self.category = kwargs.get('category', 'general')
@@ -79,24 +79,24 @@ class MicrosoftTranslator(TranslatorBase):
             translation_dict = response.json()["translation"]
             # 返回语言名称小写的映射
             return {
-                translation_dict[k]["name"].lower(): k.lower()
+                k.lower(): translation_dict[k]["nativeName"].lower()
                 for k in translation_dict.keys()
             }
         except Exception as e:
             self.logger.warning(f"无法获取Microsoft支持的语言列表，使用默认列表: {e}")
             # 返回一个默认的常见语言列表
             return {
-                "afrikaans": "af", "arabic": "ar", "bulgarian": "bg", "catalan": "ca",
-                "chinese (simplified)": "zh-hans", "chinese (traditional)": "zh-hant",
-                "czech": "cs", "danish": "da", "dutch": "nl", "english": "en",
-                "estonian": "et", "finnish": "fi", "french": "fr", "german": "de",
-                "greek": "el", "haitian creole": "ht", "hebrew": "he", "hindi": "hi",
-                "hungarian": "hu", "icelandic": "is", "indonesian": "id", "italian": "it",
-                "japanese": "ja", "korean": "ko", "latvian": "lv", "lithuanian": "lt",
-                "norwegian": "nb", "polish": "pl", "portuguese": "pt", "romanian": "ro",
-                "russian": "ru", "slovak": "sk", "slovenian": "sl", "spanish": "es",
-                "swedish": "sv", "thai": "th", "turkish": "tr", "ukrainian": "uk",
-                "vietnamese": "vi", "auto": "auto"
+                "af": "afrikaans", "ar": "arabic", "bg": "bulgarian", "ca": "catalan",
+                "zh-hans": "chinese (simplified)", "zh-hant": "chinese (traditional)",
+                "cs": "czech", "da": "danish", "nl": "dutch", "en": "english", "et": "estonian",        
+                "fi": "finnish", "fr": "french", "de": "german", "el": "greek",
+                "ht": "haitian creole", "he": "hebrew", "hi": "hindi", "hu": "hungarian",
+                "is": "icelandic", "id": "indonesian", "it": "italian", "ja": "japanese",
+                "ko": "korean", "lv": "latvian", "lt": "lithuanian", "nb": "norwegian",
+                "pl": "polish", "pt": "portuguese", "ro": "romanian", "ru": "russian",
+                "sk": "slovak", "sl": "slovenian", "es": "spanish", "sv": "swedish", "th": "thai",      
+                "tr": "turkish", "uk": "ukrainian", "vi": "vietnamese",
+                "auto": "auto"
             }
 
     def validate_config(self):

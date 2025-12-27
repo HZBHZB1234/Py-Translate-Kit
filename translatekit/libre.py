@@ -13,11 +13,11 @@ class LibreTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "libre_translator"
     SUPPORTED_LANGUAGES = {
-        "English": "en", "Arabic": "ar", "Chinese": "zh", "French": "fr",
-        "German": "de", "Hindi": "hi", "Indonesian": "id", "Irish": "ga",
-        "Italian": "it", "Japanese": "ja", "Korean": "ko", "Polish": "pl",
-        "Portuguese": "pt", "Russian": "ru", "Spanish": "es", "Turkish": "tr",
-        "Vietnamese": "vi", "auto": "auto"
+        "en": "English", "ar": "Arabic", "zh": "Chinese", "fr": "French",
+        "de": "German", "hi": "Hindi", "id": "Indonesian", "ga": "Irish",
+        "it": "Italian", "ja": "Japanese", "ko": "Korean", "pl": "Polish",
+        "pt": "Portuguese", "ru": "Russian", "es": "Spanish", "tr": "Turkish",
+        "vi": "Vietnamese","auto": "auto"
     }
     
     # Libre翻译API端点
@@ -40,7 +40,7 @@ class LibreTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持api_key, use_free_api, custom_url等
         """
         config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('libre_api_key', kwargs.get('api_key', os.getenv('LIBRE_API_KEY', '')))
+        self.api_key = config.api_key.get('libre_api_key', kwargs.get('api_key', ''))
         self.use_free_api = kwargs.get('use_free_api', True)
         self.custom_url = kwargs.get('custom_url', None)
         self.proxies = kwargs.get('proxies', None)
