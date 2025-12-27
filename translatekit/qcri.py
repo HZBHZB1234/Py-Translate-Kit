@@ -13,7 +13,7 @@ class QcriTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "qcri_translator"
     SUPPORTED_LANGUAGES = {
-        "Arabic": "ar", "English": "en", "Spanish": "es", "auto": "auto"
+        "ar": "Arabic","en": "English","es": "Spanish","auto": "auto"
     }
     
     # Qcri翻译API端点
@@ -36,7 +36,7 @@ class QcriTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持api_key等
         """
         config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('qcri_api_key', kwargs.get('api_key', os.getenv('QCRI_API_KEY', '')))
+        self.api_key = config.api_key.get('qcri_api_key', kwargs.get('api_key', ''))
         self.proxies = kwargs.get('proxies', None)
 
         # 验证API密钥

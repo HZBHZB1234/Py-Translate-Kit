@@ -13,41 +13,39 @@ class GoogleTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "google_translator"
     SUPPORTED_LANGUAGES = {
-        "afrikaans": "af", "albanian": "sq", "amharic": "am", "arabic": "ar",
-        "armenian": "hy", "assamese": "as", "aymara": "ay", "azerbaijani": "az",
-        "bambara": "bm", "basque": "eu", "belarusian": "be", "bengali": "bn",
-        "bhojpuri": "bho", "bosnian": "bs", "bulgarian": "bg", "catalan": "ca",
-        "cebuano": "ceb", "chichewa": "ny", "chinese (simplified)": "zh-CN",
-        "chinese (traditional)": "zh-TW", "corsican": "co", "croatian": "hr",
-        "czech": "cs", "danish": "da", "dhivehi": "dv", "dogri": "doi",
-        "dutch": "nl", "english": "en", "esperanto": "eo", "estonian": "et",
-        "ewe": "ee", "filipino": "tl", "finnish": "fi", "french": "fr",
-        "frisian": "fy", "galician": "gl", "georgian": "ka", "german": "de",
-        "greek": "el", "guarani": "gn", "gujarati": "gu", "haitian creole": "ht",
-        "hausa": "ha", "hawaiian": "haw", "hebrew": "iw", "hindi": "hi",
-        "hmong": "hmn", "hungarian": "hu", "icelandic": "is", "igbo": "ig",
-        "ilocano": "ilo", "indonesian": "id", "irish": "ga", "italian": "it",
-        "japanese": "ja", "javanese": "jw", "kannada": "kn", "kazakh": "kk",
-        "khmer": "km", "kinyarwanda": "rw", "konkani": "gom", "korean": "ko",
-        "krio": "kri", "kurdish (kurmanji)": "ku", "kurdish (sorani)": "ckb",
-        "kyrgyz": "ky", "lao": "lo", "latin": "la", "latvian": "lv",
-        "lingala": "ln", "lithuanian": "lt", "luganda": "lg", "luxembourgish": "lb",
-        "macedonian": "mk", "maithili": "mai", "malagasy": "mg", "malay": "ms",
-        "malayalam": "ml", "maltese": "mt", "maori": "mi", "marathi": "mr",
-        "meiteilon (manipuri)": "mni-Mtei", "mizo": "lus", "mongolian": "mn",
-        "myanmar": "my", "nepali": "ne", "norwegian": "no", "odia (oriya)": "or",
-        "oromo": "om", "pashto": "ps", "persian": "fa", "polish": "pl",
-        "portuguese": "pt", "punjabi": "pa", "quechua": "qu", "romanian": "ro",
-        "russian": "ru", "samoan": "sm", "sanskrit": "sa", "scots gaelic": "gd",
-        "sepedi": "nso", "serbian": "sr", "sesotho": "st", "shona": "sn",
-        "sindhi": "sd", "sinhala": "si", "slovak": "sk", "slovenian": "sl",
-        "somali": "so", "spanish": "es", "sundanese": "su", "swahili": "sw",
-        "swedish": "sv", "tajik": "tg", "tamil": "ta", "tatar": "tt",
-        "telugu": "te", "thai": "th", "tigrinya": "ti", "tsonga": "ts",
-        "turkish": "tr", "turkmen": "tk", "twi": "ak", "ukrainian": "uk",
-        "urdu": "ur", "uyghur": "ug", "uzbek": "uz", "vietnamese": "vi",
-        "welsh": "cy", "xhosa": "xh", "yiddish": "yi", "yoruba": "yo",
-        "zulu": "zu", "auto": "auto"
+        "af": "afrikaans", "sq": "albanian", "am": "amharic", "ar": "arabic",
+        "hy": "armenian", "as": "assamese", "ay": "aymara", "az": "azerbaijani",
+        "bm": "bambara", "eu": "basque", "be": "belarusian", "bn": "bengali",
+        "bho": "bhojpuri", "bs": "bosnian", "bg": "bulgarian", "ca": "catalan",
+        "ceb": "cebuano", "ny": "chichewa", "zh-CN": "chinese (simplified)",
+        "zh-TW": "chinese (traditional)", "co": "corsican", "hr": "croatian",
+        "cs": "czech", "da": "danish", "dv": "dhivehi", "doi": "dogri", "nl": "dutch",
+        "en": "english", "eo": "esperanto", "et": "estonian", "ee": "ewe",
+        "tl": "filipino", "fi": "finnish", "fr": "french", "fy": "frisian",
+        "gl": "galician", "ka": "georgian", "de": "german", "el": "greek",
+        "gn": "guarani", "gu": "gujarati", "ht": "haitian creole", "ha": "hausa",
+        "haw": "hawaiian", "iw": "hebrew", "hi": "hindi", "hmn": "hmong",
+        "hu": "hungarian", "is": "icelandic", "ig": "igbo", "ilo": "ilocano",
+        "id": "indonesian", "ga": "irish", "it": "italian", "ja": "japanese",
+        "jw": "javanese", "kn": "kannada", "kk": "kazakh", "km": "khmer",
+        "rw": "kinyarwanda", "gom": "konkani", "ko": "korean", "kri": "krio",
+        "ku": "kurdish (kurmanji)", "ckb": "kurdish (sorani)", "ky": "kyrgyz",
+        "lo": "lao", "la": "latin", "lv": "latvian", "ln": "lingala", "lt": "lithuanian",       
+        "lg": "luganda", "lb": "luxembourgish", "mk": "macedonian", "mai": "maithili",
+        "mg": "malagasy", "ms": "malay", "ml": "malayalam", "mt": "maltese",
+        "mi": "maori", "mr": "marathi", "mni-Mtei": "meiteilon (manipuri)", "lus": "mizo",
+        "mn": "mongolian", "my": "myanmar", "ne": "nepali", "no": "norwegian",
+        "or": "odia (oriya)", "om": "oromo", "ps": "pashto", "fa": "persian",
+        "pl": "polish", "pt": "portuguese", "pa": "punjabi", "qu": "quechua",
+        "ro": "romanian", "ru": "russian", "sm": "samoan", "sa": "sanskrit",
+        "gd": "scots gaelic", "nso": "sepedi", "sr": "serbian", "st": "sesotho",
+        "sn": "shona", "sd": "sindhi", "si": "sinhala", "sk": "slovak", "sl": "slovenian",      
+        "so": "somali", "es": "spanish", "su": "sundanese", "sw": "swahili",
+        "sv": "swedish", "tg": "tajik", "ta": "tamil", "tt": "tatar", "te": "telugu",
+        "th": "thai", "ti": "tigrinya", "ts": "tsonga", "tr": "turkish", "tk": "turkmen",       
+        "ak": "twi", "uk": "ukrainian", "ur": "urdu", "ug": "uyghur", "uz": "uzbek",
+        "vi": "vietnamese", "cy": "welsh", "xh": "xhosa", "yi": "yiddish", "yo": "yoruba",      
+        "zu": "zulu","auto": "auto"
     }
     
     # Google翻译API端点
@@ -85,30 +83,6 @@ class GoogleTranslator(TranslatorBase):
         # Google翻译不需要API密钥，但需要验证基本配置
         if not self.config.target_lang:
             raise ConfigurationError("目标语言未配置")
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码（如'en'）
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称（如'english'）
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
 
     def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """

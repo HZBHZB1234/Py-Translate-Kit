@@ -17,11 +17,11 @@ class TencentTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "tencent_translator"
     SUPPORTED_LANGUAGES = {
-        "arabic": "ar", "chinese (simplified)": "zh", "chinese (traditional)": "zh-TW",
-        "english": "en", "french": "fr", "german": "de", "hindi": "hi",
-        "indonesian": "id", "japanese": "ja", "korean": "ko", "malay": "ms",
-        "portuguese": "pt", "russian": "ru", "spanish": "es", "thai": "th",
-        "turkish": "tr", "vietnamese": "vi", "auto": "auto"
+        "ar": "arabic", "zh": "chinese (simplified)", "zh-TW": "chinese (traditional)",
+        "en": "english", "fr": "french", "de": "german", "hi": "hindi",
+        "id": "indonesian", "ja": "japanese", "ko": "korean", "ms": "malay",
+        "pt": "portuguese", "ru": "russian", "es": "spanish", "th": "thai",
+        "tr": "turkish", "vi": "vietnamese","auto": "auto"
     }
     
     # Tencent翻译API端点
@@ -44,8 +44,8 @@ class TencentTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持secret_id, secret_key等
         """
         config = config or self.DEFAULT_CONFIG
-        self.secret_id = config.api_key.get('tencent_secret_id', kwargs.get('secret_id', os.getenv('TENCENT_SECRET_ID', '')))
-        self.secret_key = config.api_key.get('tencent_secret_key', kwargs.get('secret_key', os.getenv('TENCENT_SECRET_KEY', '')))
+        self.secret_id = config.api_key.get('tencent_secret_id', kwargs.get('secret_id', ''))
+        self.secret_key = config.api_key.get('tencent_secret_key', kwargs.get('secret_key', ''))
         self.proxies = kwargs.get('proxies', None)
 
         # 验证必需的认证信息

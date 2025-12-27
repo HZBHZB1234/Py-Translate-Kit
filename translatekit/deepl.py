@@ -13,14 +13,14 @@ class DeepLTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "deepl_translator"
     SUPPORTED_LANGUAGES = {
-        "bulgarian": "bg", "czech": "cs", "danish": "da", "german": "de",
-        "greek": "el", "english": "en", "spanish": "es", "estonian": "et",
-        "finnish": "fi", "french": "fr", "hungarian": "hu", "indonesian": "id",
-        "italian": "it", "japanese": "ja", "korean": "ko", "lithuanian": "lt",
-        "latvian": "lv", "norwegian": "no", "dutch": "nl", "polish": "pl",
-        "portuguese": "pt", "romanian": "ro", "russian": "ru", "slovak": "sk",
-        "slovenian": "sl", "swedish": "sv", "turkish": "tr", "ukrainian": "uk",
-        "chinese": "zh", "auto": "auto"
+        "bg": "bulgarian", "cs": "czech", "da": "danish", "de": "german", "el": "greek",
+        "en": "english", "es": "spanish", "et": "estonian", "fi": "finnish",
+        "fr": "french", "hu": "hungarian", "id": "indonesian", "it": "italian",
+        "ja": "japanese", "ko": "korean", "lt": "lithuanian", "lv": "latvian",
+        "no": "norwegian", "nl": "dutch", "pl": "polish", "pt": "portuguese",
+        "ro": "romanian", "ru": "russian", "sk": "slovak", "sl": "slovenian",
+        "sv": "swedish", "tr": "turkish", "uk": "ukrainian", "zh": "chinese",
+        "auto": "auto"
     }
     
     # DeepL API端点
@@ -44,7 +44,7 @@ class DeepLTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持api_key, use_free_api等
         """
         config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('deepl_api_key', kwargs.get('api_key', os.getenv('DEEPL_API_KEY', '')))
+        self.api_key = config.api_key.get('deepl_api_key', kwargs.get('api_key', ''))
         self.use_free_api = kwargs.get('use_free_api', True)
         self.proxies = kwargs.get('proxies', None)
         self.glossary_id = kwargs.get('glossary_id', None)
