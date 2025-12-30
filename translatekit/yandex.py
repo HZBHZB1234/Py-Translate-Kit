@@ -14,6 +14,44 @@ class YandexTranslator(TranslatorBase):
     SERVICE_NAME = "yandex_translator"
     SUPPORTED_LANGUAGES = {}  # 将在初始化时从API获取
     
+    DEFAULT_API_KEY = {
+        "api_key": "",
+        "folder_id": "",
+        "speller": False,
+        "format_HTML": False
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "api_key",
+            "name": "Yandex Cloud API密钥",
+            "type": "string",
+            "required": True,
+            "description": "Yandex Cloud API密钥"
+        },
+        {
+            "id": "folder_id",
+            "name": "Yandex Cloud目录ID",
+            "type": "string",
+            "required": True,
+            "description": "Yandex Cloud目录ID"
+        },
+        {
+            "id": "speller",
+            "name": "拼写检查",
+            "type": "boolean",
+            "required": False,
+            "description": "是否启用拼写检查，默认为False"
+        },
+        {
+            "id": "format_HTML",
+            "name": "HTML格式",
+            "type": "boolean",
+            "required": False,
+            "description": "是否将输入文本作为HTML格式，默认为False"
+        }
+    ]
+    
     # Yandex Cloud 翻译API端点
     BASE_ENDPOINT = "https://translate.api.cloud.yandex.net/translate/v2/{endpoint}"
     
@@ -31,24 +69,16 @@ class YandexTranslator(TranslatorBase):
         
         Args:
             config: 翻译配置对象
-            **kwargs: 额外配置参数，支持api_key等
+            **kwargs: 额外配置参数
         """
-        config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('yandex_api_key', 
-                                         kwargs.get('api_key', 
-                                                   ''))
-        self.folder_id = kwargs.get('folder_id', '')
-        self.proxies = kwargs.get('proxies', None)
+        super().__init__(config, **kwargs)
+        self.api_key = config.api_key.get('api_key')
+        self.folder_id = config.api_key.get('folder_id', '')
+        self.speller = config.api_key.get('speller', False)
+        self.format_HTML = config.api_key.get('format_HTML', False)
 
         # 验证必要参数
-        if not self.api_key:
-            raise ConfigurationError("Yandex Cloud翻译需要API密钥")
-
-        # 更新配置中的API密钥
-        config.api_key['yandex_api_key'] = self.api_key
-
-        super().__init__(config, **kwargs)
-
+        self.validate_config()
         # 获取支持的语言列表
         self._supported_languages = self._get_supported_languages_from_api()
         self.SUPPORTED_LANGUAGES = self._supported_languages
@@ -70,7 +100,6 @@ class YandexTranslator(TranslatorBase):
                 url,
                 headers=self._get_headers(),
                 params=params,
-                proxies=self.proxies,
                 timeout=self.config.timeout
             )
             
@@ -107,7 +136,7 @@ class YandexTranslator(TranslatorBase):
         if not self.api_key:
             raise ConfigurationError("Yandex Cloud API密钥未配置")
 
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Yandex Cloud翻译API
         
@@ -121,24 +150,21 @@ class YandexTranslator(TranslatorBase):
         
         # 构建请求体
         body = {
+            "folderId": self.folder_id,
             "targetLanguageCode": target_lang,
             "texts": [text],
-            "format": kwargs.get("format", "PLAIN_TEXT")
+            "speller": self.speller,
+            "format": "HTML" if self.format_HTML else "PLAIN_TEXT"
         }
         
         # 如果源语言不是自动检测，添加源语言参数
         if source_lang != "auto":
             body["sourceLanguageCode"] = source_lang
             
-        # 如果提供了folder_id，添加到请求体
-        if self.folder_id:
-            body["folderId"] = self.folder_id
-
         response = requests.post(
             url,
             headers=self._get_headers(),
             json=body,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
 

@@ -53,6 +53,23 @@ class BaiduTranslator(TranslatorBase):
         "appkey": ""
     }
     
+    DESCRIBE_API_KEY = [
+        {
+            "id": "appid",
+            "name": "百度翻译appid",
+            "type": "string",
+            "required": True,
+            "description": "百度翻译appid"
+        },
+        {
+            "id": "appkey",
+            "name": "百度翻译appkey",
+            "type": "string",
+            "required": True,
+            "description": "百度翻译appkey"
+        }
+    ]
+    
     metadata = Metadata(
         console_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
         description="百度翻译服务实现",

@@ -189,6 +189,8 @@ class TranslatorBase(abc.ABC):
         self._cache = {} if self.config.enable_cache else None
         self._metrics = {} if self.config.enable_metrics else None
         self._executor = None
+        self._process_pre = []
+        self._process_post = []
         
         if kwargs:
             self._update_config_from_kwargs(kwargs)
@@ -478,9 +480,9 @@ class TranslatorBase(abc.ABC):
         if not self.config.enable_preprocessing:
             return text
             
-        processed = text.strip()
-        processed = self._custom_preprocess(processed, **kwargs)
-        
+        processed = text
+        for pre_func in self._process_pre:
+            processed = pre_func(processed, **kwargs)
         return processed
 
     def _postprocess_text(self, text: str, **kwargs) -> str:
@@ -488,8 +490,9 @@ class TranslatorBase(abc.ABC):
         if not self.config.enable_postprocessing:
             return text
             
-        processed = text.strip()
-        processed = self._custom_postprocess(processed, **kwargs)
+        processed = text
+        for post_func in self._process_post:
+            processed = post_func(processed, **kwargs)
         
         return processed
 
@@ -670,6 +673,8 @@ class TranslatorBase(abc.ABC):
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
+            elif key in self.DEFAULT_API_KEY:
+                self.config.api_key[key] = value
             else:
                 self.logger.debug(f"忽略未知配置项: {key}")
 
@@ -738,16 +743,24 @@ class TranslatorBase(abc.ABC):
         """获取使用情况"""
         return self._metrics or {}
 
-    # ==================== 钩子方法（子类可覆盖） ====================
+    # ==================== 钩子方法 ====================
     
-    def _custom_preprocess(self, text: str, **kwargs) -> str:
-        """自定义预处理（子类可覆盖）"""
-        return text
+    def add_preprocess(self, func: Callable):
+        """添加预处理函数"""
+        self._process_pre.append(func)
 
-    def _custom_postprocess(self, text: str, **kwargs) -> str:
-        """自定义后处理（子类可覆盖）"""
-        return text
+    def add_postprocess(self, func: Callable):
+        """添加后处理函数"""
+        self._process_post.append(func)
 
+    def clear_preprocess(self):
+        """清除所有预处理函数"""
+        self._process_pre.clear()
+        
+    def clear_postprocess(self):
+        """清除所有后处理函数"""
+        self._process_post.clear()
+    
     def _update_usage_metrics(self, original_text: str, translated_text: str):
         """更新使用量统计（子类可覆盖）"""
         if not self.config.enable_metrics:
