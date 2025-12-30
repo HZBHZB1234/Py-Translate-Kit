@@ -111,14 +111,14 @@ def retry_on_failure(max_retries: int = 3, retry_strategy: RetryStrategy = Retry
                     
                 except Exception as e:
                     last_exception = e
-                    self.logger.warning(f"第 {attempt + 1} 次尝试失败: {e}")
+                    self.logger.debug(f"第 {attempt + 1} 次尝试失败: {e}")
                     
                     if attempt == max_retries:
                         break
                         
                     # 计算延迟
                     delay = self._calculate_retry_delay(attempt, retry_strategy)
-                    self.logger.info(f"等待 {delay:.2f} 秒后重试")
+                    self.logger.debug(f"等待 {delay:.2f} 秒后重试")
                     time.sleep(delay)
                     
                     # 错误处理
@@ -189,8 +189,7 @@ class TranslatorBase(abc.ABC):
         if kwargs:
             self._update_config_from_kwargs(kwargs)
         
-        self.validate_config()
-        self.logger.info(f"{self.SERVICE_NAME} 初始化完成")
+        self.logger.debug(f"{self.SERVICE_NAME} 初始化完成")
 
     def get_metadata(self) -> Dict[str, Any]:
         """获取翻译器元数据信息"""
@@ -223,7 +222,7 @@ class TranslatorBase(abc.ABC):
         """获取使用文档"""
         return self.METADATA.usage_documentation
     
-    def get_custom_override_content(self) -> Dict[str, Any]:
+    def get_custom_content(self) -> Dict[str, Any]:
         """获取自定义覆盖内容"""
         return self.METADATA.custom_override_content.copy() if self.METADATA.custom_override_content else {}
     
@@ -314,13 +313,13 @@ class TranslatorBase(abc.ABC):
         if hasattr(self, method_name):
             return getattr(self, method_name)
         else:
-            self.logger.warning(f"未知翻译方法: {method}，使用默认方法")
+            self.logger.debug(f"未知翻译方法: {method}，使用默认方法")
             return self._translate_direct
 
     def _translate_long_text(self, text: str, source_lang: str, target_lang: str,
                             translate_func: Callable, **kwargs) -> str:
         """长文本翻译"""
-        self.logger.info(f"文本过长 ({len(text)} 字符)，进行分割翻译")
+        self.logger.debug(f"文本过长 ({len(text)} 字符)，进行分割翻译")
         
         # 分割文本
         chunks = self._split_long_text(text, **kwargs)
@@ -367,7 +366,7 @@ class TranslatorBase(abc.ABC):
     def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str,
                            translate_func: Callable, **kwargs) -> List[str]:
         """并行翻译"""
-        self.logger.info(f"并行翻译 {len(texts)} 个文本")
+        self.logger.debug(f"并行翻译 {len(texts)} 个文本")
         return self._process_batch_parallel(texts, source_lang, target_lang, translate_func, **kwargs)
 
     # ==================== 批量处理逻辑 ====================
@@ -445,7 +444,7 @@ class TranslatorBase(abc.ABC):
         if len(text) <= self.config.text_max_length:
             return text
             
-        self.logger.info(f"文本过长 ({len(text)} 字符)，进行分割")
+        self.logger.debug(f"文本过长 ({len(text)} 字符)，进行分割")
         
         strategy = kwargs.get('split_strategy', self.config.split_strategy)
         
@@ -578,7 +577,7 @@ class TranslatorBase(abc.ABC):
 
     def _split_by_semantic(self, text: str, **kwargs) -> List[str]:
         """语义分割（需要子类实现或使用外部库）"""
-        self.logger.warning("语义分割未实现，回退到固定长度分割")
+        self.logger.debug("语义分割未实现，回退到固定长度分割")
         return self._split_by_fixed_length(text, **kwargs)
 
     # ==================== 并发处理 ====================
@@ -666,7 +665,7 @@ class TranslatorBase(abc.ABC):
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
             else:
-                self.logger.warning(f"忽略未知配置项: {key}")
+                self.logger.debug(f"忽略未知配置项: {key}")
 
     def update_config(self, **kwargs):
         """更新配置"""
@@ -765,10 +764,6 @@ class TranslatorBase(abc.ABC):
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            
-        logger.setLevel(
-            logging.DEBUG if self.config.debug_mode else logging.INFO
-        )
         
         return logger
 
@@ -787,12 +782,6 @@ class TranslatorBase(abc.ABC):
             self._executor = None
 
     # ==================== 工具方法 ====================
-    
-    def enable_debug_mode(self, level: str = 'basic'):
-        """启用调试模式"""
-        self.config.debug_mode = True
-        self.logger.setLevel(logging.DEBUG)
-
     def get_performance_metrics(self) -> Dict[str, Any]:
         """获取性能指标"""
         return self._metrics.copy() if self._metrics else {}

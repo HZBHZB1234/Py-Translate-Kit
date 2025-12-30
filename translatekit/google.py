@@ -69,11 +69,11 @@ class GoogleTranslator(TranslatorBase):
         """
         # Google翻译不需要API密钥，因此重新设置配置
         config = config or self.DEFAULT_CONFIG
+        super().__init__(config, **kwargs)
         if not config.api_key:
             config.api_key = {}  # Google翻译不需要API密钥
         
-        super().__init__(config, **kwargs)
-        
+        self.validate_config()        
         # 设置代理
         self.proxies = kwargs.get('proxies', None)
         self._alt_element_query = {"class": "result-container"}

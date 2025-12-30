@@ -56,13 +56,14 @@ class DeepLTranslator(TranslatorBase):
         self.formality = kwargs.get('formality', None)
 
         # 从环境变量或配置中获取API密钥
-        if not self.api_key:
+        if not self.use_free_api and not self.api_key:
             raise ConfigurationError("DeepL翻译需要API密钥")
 
         # 更新配置中的API密钥
         config.api_key['deepl_api_key'] = self.api_key
 
         super().__init__(config, **kwargs)
+        self.validate_config()
 
         # 根据是否使用免费API设置正确的端点
         if not self.use_free_api:
