@@ -48,6 +48,11 @@ class BaiduTranslator(TranslatorBase):
         "financial": "金融"
     }
     
+    DEFAULT_API_KEY = {
+        "appid": "",
+        "appkey": ""
+    }
+    
     metadata = Metadata(
         console_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
         description="百度翻译服务实现",
@@ -63,12 +68,9 @@ class BaiduTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持appid, appkey等
         """
-        # 提取appkey，百度翻译需要appid和appkey两个参数
-        config = config or self.DEFAULT_CONFIG
-        
         super().__init__(config, **kwargs)
-        self.appid = config.api_key.get('appid', '')
-        self.appkey = config.api_key.get('appkey' if 'appkey' in config.api_key else 'apikey', '')
+        self.appid = self.config.api_key.get('appid', '')
+        self.appkey = self.config.api_key.get('appkey' if 'appkey' in self.config.api_key else 'apikey', '')
                 
         self.validate_config()
         if not self.appid:
@@ -87,7 +89,7 @@ class BaiduTranslator(TranslatorBase):
         if not self.appkey:
             raise ConfigurationError("appkey未配置，百度翻译需要appid和appkey")
     
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
         """
         调用百度翻译API（通用翻译）
         
@@ -95,16 +97,8 @@ class BaiduTranslator(TranslatorBase):
             text: 要翻译的文本
             source_lang: 源语言
             target_lang: 目标语言
-            **kwargs: 额外参数，domain用于指定翻译领域
+            **kwargs: 额外参数
         """
-        # 检查是否需要调用领域翻译
-        domain = kwargs.get('domain', 'common')
-        if domain != 'common' and domain in self.SUPPORTED_DOMAINS:
-            return self._call_domain_translate_api(text, source_lang, target_lang, domain,** kwargs)
-            
-        # 检查是否需要调用LLM翻译
-        if kwargs.get('use_llm', False):
-            return self._call_llm_translate_api(text, source_lang, target_lang, **kwargs)
             
         # 通用翻译
         url = f"{self.BASE_ENDPOINT}{self.GENERAL_TRANSLATE_PATH}"
@@ -129,7 +123,7 @@ class BaiduTranslator(TranslatorBase):
         
         return response.json()
     
-    def _call_llm_translate_api(self, text: str, source_lang: str, target_lang: str,** kwargs) -> Any:
+    def _translate_llm(self, text: str, source_lang: str, target_lang: str,** kwargs) -> Any:
         """调用百度LLM翻译API"""
         url = f"{self.BASE_ENDPOINT}{self.LLM_TRANSLATE_PATH}"
         
@@ -154,7 +148,7 @@ class BaiduTranslator(TranslatorBase):
         
         return response.json()
     
-    def _call_domain_translate_api(self, text: str, source_lang: str, target_lang: str, domain: str, **kwargs) -> Any:
+    def _translate_domain(self, text: str, source_lang: str, target_lang: str, domain: str, **kwargs) -> Any:
         """调用百度领域翻译API"""
         if domain not in self.SUPPORTED_DOMAINS:
             raise ValueError(f"不支持的翻译领域: {domain}，支持的领域有: {list(self.SUPPORTED_DOMAINS.keys())}")

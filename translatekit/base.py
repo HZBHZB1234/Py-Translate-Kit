@@ -57,6 +57,9 @@ class TranslationConfig:
     source_lang: str = "auto"
     target_lang: str = "en"
     
+    # 翻译方法选择
+    method: str = "default"
+    
     # 文本处理
     text_max_length: int = 2000
     split_strategy: SplitStrategy = SplitStrategy.SENTENCE
@@ -160,6 +163,7 @@ class TranslatorBase(abc.ABC):
     SERVICE_NAME = "base_translator"
     SUPPORTED_LANGUAGES = {}
     DEFAULT_CONFIG = TranslationConfig()
+    DEFAULT_API_KEY = {}
     
     METADATA = Metadata(
         console_url="",
@@ -273,11 +277,12 @@ class TranslatorBase(abc.ABC):
                          method: Optional[str] = None, **kwargs) -> str:
         """单文本翻译"""
         # 选择翻译方法
-        translate_func = self._select_translate_method(method, **kwargs)
+        method = method or self.config.method
+        translate_func = self._select_translate_method(method)
         
         # 根据文本长度选择策略
         if len(text) <= self.config.text_max_length:
-            return translate_func(text, source_lang, target_lang, **kwargs)
+            return self._translate_call(self, translate_func, text, source_lang, target_lang, **kwargs)
         else:
             return self._translate_long_text(text, source_lang, target_lang, translate_func, **kwargs)
 
@@ -288,13 +293,14 @@ class TranslatorBase(abc.ABC):
             return [self._translate_single(texts[0], source_lang, target_lang, method, **kwargs)]
         
         # 选择翻译方法
-        translate_func = self._select_translate_method(method, **kwargs)
+        method = method or self.config.method
+        translate_func = self._select_translate_method(method)
         
         return self._process_batch_with_cache(
             texts, source_lang, target_lang, translate_func, **kwargs
         )
 
-    def _select_translate_method(self, method: Optional[str] = None, **kwargs) -> Callable:
+    def _select_translate_method(self, method: Optional[str] = None) -> Callable:
         """
         选择翻译方法
         
@@ -306,7 +312,7 @@ class TranslatorBase(abc.ABC):
             翻译函数
         """
         if method is None:
-            return self._translate_direct
+            return self._translate_default
         
         # 子类可以重写此方法以支持多种翻译方法
         method_name = f"_translate_{method}"
@@ -314,7 +320,7 @@ class TranslatorBase(abc.ABC):
             return getattr(self, method_name)
         else:
             self.logger.debug(f"未知翻译方法: {method}，使用默认方法")
-            return self._translate_direct
+            return self._translate_default
 
     def _translate_long_text(self, text: str, source_lang: str, target_lang: str,
                             translate_func: Callable, **kwargs) -> str:
@@ -345,15 +351,15 @@ class TranslatorBase(abc.ABC):
 
     @with_cache
     @retry_on_failure(max_retries=3, retry_strategy=RetryStrategy.EXPONENTIAL)
-    def _translate_direct(self, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
-        """直接API翻译（默认方法）"""
+    def _translate_call(self, translate_func: Callable, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
+        """包装翻译函数"""
         self.logger.debug(f"直接翻译: {text[:50]}...")
         
         # 应用速率限制
         self._apply_rate_limiting()
         
         # 调用API
-        response = self._call_translate_api(text, source_lang, target_lang, **kwargs)
+        response = translate_func(text, source_lang, target_lang, **kwargs)
         
         # 解析响应
         result = self._parse_api_response(response, **kwargs)
@@ -490,9 +496,9 @@ class TranslatorBase(abc.ABC):
     # ==================== 必须由子类实现的方法 ====================
     
     @abc.abstractmethod
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
         """
-        调用具体翻译API - 必须由子类实现
+        调用默认翻译API - 必须由子类实现
         
         Args:
             text: 要翻译的文本
@@ -592,7 +598,7 @@ class TranslatorBase(abc.ABC):
         futures = []
         for text in texts:
             future = self._executor.submit(
-                translate_func, text, source_lang, target_lang, **kwargs
+                self._translate_call, translate_func, text, source_lang, target_lang, **kwargs
             )
             futures.append(future)
             
