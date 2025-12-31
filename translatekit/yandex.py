@@ -72,13 +72,7 @@ class YandexTranslator(TranslatorBase):
             **kwargs: 额外配置参数
         """
         super().__init__(config, **kwargs)
-        self.api_key = config.api_key.get('api_key')
-        self.folder_id = config.api_key.get('folder_id', '')
-        self.speller = config.api_key.get('speller', False)
-        self.format_HTML = config.api_key.get('format_HTML', False)
-
-        # 验证必要参数
-        self.validate_config()
+        
         # 获取支持的语言列表
         self._supported_languages = self._get_supported_languages_from_api()
         self.SUPPORTED_LANGUAGES = self._supported_languages
@@ -129,12 +123,6 @@ class YandexTranslator(TranslatorBase):
                 "uk": "Ukrainian", "he": "Hebrew", "ro": "Romanian",
                 "sv": "Swedish", "hu": "Hungarian", "cs": "Czech"
             }
-
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.api_key:
-            raise ConfigurationError("Yandex Cloud API密钥未配置")
 
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
@@ -238,10 +226,6 @@ class YandexTranslator(TranslatorBase):
 
         return language
 
-    def get_language_support(self) -> Dict[str, str]:
-        """获取支持的语言列表"""
-        return self._supported_languages.copy()
-
     def get_special_api_reference(self) -> Dict[str, Any]:
         """
         获取Yandex Cloud翻译特殊API方法的引用规范
@@ -254,11 +238,5 @@ class YandexTranslator(TranslatorBase):
                 },
                 "return_type": "str 检测到的语言代码",
                 "example": "translator.detect_language('Hello world')"
-            },
-            "get_language_support": {
-                "description": "获取支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码到语言名称的映射字典",
-                "example": "translator.get_language_support()"
             }
         }

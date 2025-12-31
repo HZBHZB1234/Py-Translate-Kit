@@ -209,7 +209,7 @@ class TranslatorBase(abc.ABC):
         """更新翻译类中的config，语法逻辑与初始化时类似
         Args:
             config: 为该次操作应用特殊配置
-            **kwargs: 单次特殊配置额外参数
+            kwargs: 单次特殊配置额外参数
             
         Returns:
             无返回结果，直接修改实例的config属性

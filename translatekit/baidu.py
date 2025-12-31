@@ -86,26 +86,10 @@ class BaiduTranslator(TranslatorBase):
             **kwargs: 额外配置参数，支持appid, appkey等
         """
         super().__init__(config, **kwargs)
-        self.appid = self.config.api_key.get('appid', '')
-        self.appkey = self.config.api_key.get('appkey' if 'appkey' in self.config.api_key else 'apikey', '')
-                
-        self.validate_config()
-        if not self.appid:
-            raise ConfigurationError("百度翻译需要配置appid")
-        if not self.appkey:
-            raise ConfigurationError("百度翻译需要配置appkey")
         
         # 线程本地存储，用于速率限制
         self.MIN_REQUEST_INTERVAL = 0.5  # 百度API建议的最小请求间隔
         
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.appid:
-            raise ConfigurationError("appid未配置，百度翻译需要appid和appkey")
-        if not self.appkey:
-            raise ConfigurationError("appkey未配置，百度翻译需要appid和appkey")
-    
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
         """
         调用百度翻译API（通用翻译）

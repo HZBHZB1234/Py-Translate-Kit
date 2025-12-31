@@ -63,7 +63,7 @@ class DeepLTranslator(TranslatorBase):
             "name": "使用免费API",
             "type": "boolean",
             "required": False,
-            "description": "是否使用免费版API，默认为True，免费版使用api-free.deepl.com端点"
+            "description": "免费版（True）限每月50万字，端点为api-free.deepl.com；付费版（False）无限制，端点为api.deepl.com"
         },
         {
             "id": "glossary_id",
@@ -84,21 +84,21 @@ class DeepLTranslator(TranslatorBase):
             "name": "标签处理",
             "type": "string",
             "required": False,
-            "description": "指定的标签处理方式，默认为'xml'"
+            "description": "指定的标签处理方式，可选xml/html/none，默认为'xml'"
         },
         {
             "id": "context",
             "name": "上下文",
             "type": "string",
             "required": False,
-            "description": "提供额外的上下文信息以改善翻译"
+            "description": "提供额外的上下文信息以改善翻译，最大500字符"
         },
         {
             "id": "split_sentences",
             "name": "句子分割",
             "type": "string",
             "required": False,
-            "description": "控制句子分割的方式，默认为'1'"
+            "description": "控制句子分割的方式，可选0（不分割）/ 1（正常分割）/ nonewlines（不按换行分割），默认'1'"
         },
         {
             "id": "prevent_implicit_spaces",
@@ -112,7 +112,7 @@ class DeepLTranslator(TranslatorBase):
             "name": "正式程度",
             "type": "string",
             "required": False,
-            "description": "翻译的正式程度，可选值为'default'、'more'、'less'"
+            "description": "可选'default'/'more'/'less'，仅支持德语、法语等部分语言，英语不生效"
         }
     ]
     
@@ -126,28 +126,10 @@ class DeepLTranslator(TranslatorBase):
         """
         super().__init__(config,** kwargs)
         
-        # 从配置中获取API参数
-        self.api_key = self.config.api_key.get('api_key', '')
-        self.use_free_api = self.config.api_key.get('use_free_api', True)
-        self.glossary_id = self.config.api_key.get('glossary_id', None)
-        self.preserve_formatting = self.config.api_key.get('preserve_formatting', False)
-        self.tag_handling = self.config.api_key.get('tag_handling', 'xml')
-        self.context = self.config.api_key.get('context', None)
-        self.split_sentences = self.config.api_key.get('split_sentences', '1')
-        self.prevent_implicit_spaces = self.config.api_key.get('prevent_implicit_spaces', False)
-        self.formality = self.config.api_key.get('formality', None)
-
-        self.validate_config()
-
         # 根据是否使用免费API设置正确的端点
         if not self.use_free_api:
             self.BASE_ENDPOINT = "https://api.deepl.com/v2/"
 
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.api_key:
-            raise ConfigurationError("DeepL API密钥未配置")
 
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
@@ -236,34 +218,6 @@ class DeepLTranslator(TranslatorBase):
         response.raise_for_status()
         return response.json()
 
-    def get_supported_languages(self) -> Dict[str, str]:
-        """获取支持的语言列表"""
-        return self.SUPPORTED_LANGUAGES.copy()
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码（如'en'）
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称（如'english'）
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
-
     def get_glossaries(self) -> List[Dict[str, Any]]:
         """获取用户定义的术语表列表"""
         headers = {
@@ -295,26 +249,5 @@ class DeepLTranslator(TranslatorBase):
                 "parameters": {},
                 "return_type": "List[Dict[str, Any]] 术语表信息列表",
                 "example": "translator.get_glossaries()"
-            },
-            "get_supported_languages": {
-                "description": "获取DeepL支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码映射字典",
-                "example": "translator.get_supported_languages()"
             }
         }
-
-    def set_glossary(self, glossary_id: str):
-        """设置要使用的术语表ID"""
-        self.glossary_id = glossary_id
-
-    def set_formality(self, formality: str):
-        """
-        设置翻译的正式程度
-        Args:
-            formality: 'default', 'more', 'less'
-        """
-        if formality in ['default', 'more', 'less']:
-            self.formality = formality
-        else:
-            raise ValueError("正式程度必须是 'default', 'more', 或 'less' 中的一个")
