@@ -1,7 +1,17 @@
 # custom gitignore
 prompt.md
-
-
+dev
+test.py
+test*.py
+test_assets/
+*.docx
+*.pdf
+*.pptx
+.iflowignore
+iflow.md
+.kit
+.vscode
+.rmv
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

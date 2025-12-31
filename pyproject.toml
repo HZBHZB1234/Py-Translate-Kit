@@ -24,15 +24,13 @@ classifiers = [
 requires-python = ">=3.7"
 dynamic = ["version"]
 dependencies = [
-    "requests>=2.25.1"
+    "requests>=2.25.1",
+    "beautifulsoup4>=4.9.3",
+    "jsonpatch>=1.26"
 ]
 
 [project.optional-dependencies]
-dev = [
-    "build",
-    "twine",
-    "pytest>=6.0",
-    "pytest-cov",
+extras = [
 ]
 
 [project.urls]

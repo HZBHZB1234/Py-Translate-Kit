@@ -16,12 +16,13 @@ VERSION = '0.1.0'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'requests'
+    'requests',
+    'jsonpatch',
+    'beautifulsoup4'
 ]
 
-# What packages are optional?
 EXTRAS = {
-    # 'fancy feature': ['django'],
+    
 }
 
 # The rest you shouldn't have to touch too much :)
