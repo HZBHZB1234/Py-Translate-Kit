@@ -2,8 +2,7 @@
 Qcri翻译服务实现
 """
 
-import os
-import requests
+import warnings
 from typing import Dict, Any, Optional, List
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
@@ -19,6 +18,28 @@ class QcriTranslator(TranslatorBase):
     # Qcri翻译API端点
     BASE_ENDPOINT = "https://mt.qcri.org/api/v1/"
     
+    DEFAULT_API_KEY = {
+        "api_key": "",
+        "domain": ""
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "api_key",
+            "name": "API Key",
+            "description": "Qcri翻译API密钥",
+            "required": True,
+            "type": "string"
+        },
+        {
+            "id": "domain",
+            "name": "Domain",
+            "description": "翻译领域建议调api获取",
+            "required": False,
+            "type": "string"
+        }
+    ]
+
     METADATA = Metadata(
         console_url="https://mt.qcri.org/",
         description="Qcri翻译服务实现，由卡塔尔计算研究所提供的翻译服务",
@@ -35,18 +56,6 @@ class QcriTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持api_key等
         """
-        config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('qcri_api_key', kwargs.get('api_key', ''))
-        self.proxies = kwargs.get('proxies', None)
-
-        # 验证API密钥
-        if not self.api_key:
-            raise ConfigurationError("Qcri翻译需要API密钥，可免费获取：https://mt.qcri.org/api/v1/ref")
-
-        # 更新配置中的API密钥
-        config.api_key['qcri_api_key'] = self.api_key
-
-        # API端点
         self.api_endpoints = {
             "get_languages": "getLanguagePairs",
             "get_domains": "getDomains",
@@ -54,12 +63,11 @@ class QcriTranslator(TranslatorBase):
         }
 
         super().__init__(config, **kwargs)
-
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.api_key:
-            raise ConfigurationError("Qcri API密钥未配置")
+        
+        try:
+            self.SUPPORTED_LANGUAGES = self.get_supported_languages()
+        except Exception as e:
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
 
     def _get(self, endpoint: str, params: Optional[dict] = None, return_text: bool = True) -> str:
         """执行GET请求"""
@@ -72,7 +80,7 @@ class QcriTranslator(TranslatorBase):
         except Exception as e:
             raise APIError(f"Qcri API请求错误: {e}")
 
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Qcri翻译API
         
@@ -80,9 +88,8 @@ class QcriTranslator(TranslatorBase):
             text: 要翻译的文本
             source_lang: 源语言
             target_lang: 目标语言
-            **kwargs: 额外参数，包括domain
         """
-        domain = kwargs.get('domain', 'general')  # 默认为通用领域
+        domain = self.config.api_key.get('domain', 'general')  # 默认为通用领域
 
         params = {
             "key": self.api_key,
@@ -153,30 +160,6 @@ class QcriTranslator(TranslatorBase):
             return response.json()
         except Exception as e:
             raise APIError(f"获取领域列表错误: {e}")
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
 
     def get_special_api_reference(self) -> Dict[str, Any]:
         """

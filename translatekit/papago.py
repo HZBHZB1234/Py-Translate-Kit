@@ -2,8 +2,6 @@
 Papago翻译服务实现
 """
 
-import json
-import requests
 from typing import Dict, Any, Optional
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
@@ -21,6 +19,28 @@ class PapagoTranslator(TranslatorBase):
     # Papago翻译API端点
     BASE_ENDPOINT = "https://openapi.naver.com/v1/papago/n2mt"
     
+    DEFAULT_API_KEY = {
+        "client_id": "",
+        "secret_key": ""
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "client_id",
+            "name": "Client ID",
+            "description": "应用注册时分配的Client ID",
+            "required": True,
+            "type": "string"
+        },
+        {
+            "id": "secret_key",
+            "name": "Secret Key",
+            "description": "应用注册时分配的Secret Key",
+            "required": True,
+            "type": "string"
+        }
+    ]
+    
     METADATA = Metadata(
         console_url="https://developers.naver.com/products/papago/",
         description="Papago翻译服务实现，韩国Naver公司提供的翻译服务",
@@ -37,28 +57,9 @@ class PapagoTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持client_id, secret_key等
         """
-        config = config or self.DEFAULT_CONFIG
-        self.client_id = config.api_key.get('papago_client_id', kwargs.get('client_id', ''))
-        self.secret_key = config.api_key.get('papago_secret_key', kwargs.get('secret_key', ''))
-        self.proxies = kwargs.get('proxies', None)
-
-        # 验证必需的认证信息
-        if not self.client_id or not self.secret_key:
-            raise ConfigurationError("Papago翻译需要Client ID和Secret Key")
-
-        # 更新配置中的认证信息
-        config.api_key['papago_client_id'] = self.client_id
-        config.api_key['papago_secret_key'] = self.secret_key
-
         super().__init__(config, **kwargs)
 
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.client_id or not self.secret_key:
-            raise ConfigurationError("Papago Client ID和Secret Key未配置")
-
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Papago翻译API
         
@@ -104,39 +105,3 @@ class PapagoTranslator(TranslatorBase):
 
         return translated_text
 
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
-
-    def get_special_api_reference(self) -> Dict[str, Any]:
-        """
-        获取Papago翻译特殊API方法的引用规范
-        """
-        return {
-            "get_supported_languages": {
-                "description": "获取Papago支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码映射字典",
-                "example": "translator.get_supported_languages()"
-            }
-        }

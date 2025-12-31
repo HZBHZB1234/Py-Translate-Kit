@@ -122,6 +122,21 @@ class MyMemoryTranslator(TranslatorBase):
     # MyMemory翻译API端点
     BASE_ENDPOINT = "http://api.mymemory.translated.net/get"
     
+    DEFAULT_API_KEY = {
+        "email": ""
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "email",
+            "name": "MyMemory翻译API邮箱",
+            "type": "string",
+            "required": False,
+            "description": "MyMemory翻译API的邮箱"
+        }
+    ]
+ 
+    
     METADATA = Metadata(
         console_url="https://mymemory.translated.net/",
         description="MyMemory翻译服务实现，免费的翻译记忆库服务",
@@ -138,19 +153,10 @@ class MyMemoryTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持email等
         """
-        config = config or self.DEFAULT_CONFIG
-        self.proxies = kwargs.get('proxies', None)
-        self.email = kwargs.get('email', None)  # 可选的email，用于识别调用者
-
         super().__init__(config, **kwargs)
 
-    def validate_config(self):
-        """验证配置 - MyMemory不需要特殊配置验证"""
-        # MyMemory是免费服务，不需要API密钥，仅验证基本配置
-        if not self.config.target_lang:
-            raise ConfigurationError("目标语言未配置")
 
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用MyMemory翻译API
         
@@ -236,30 +242,6 @@ class MyMemoryTranslator(TranslatorBase):
             "source_lang": source_lang,
             "target_lang": target_lang
         }
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
 
     def get_special_api_reference(self) -> Dict[str, Any]:
         """

@@ -271,6 +271,7 @@ class TranslatorBase(abc.ABC):
         智能翻译主接口
         该接口支持多种翻译方法，并根据输入文本长度选择合适的翻译策略，自动处理并发翻译，缓存翻译结果，提供可靠的重试机制，并提供高级功能如速率限制、使用量统计等。
         只有text参数必要，其余参数仅为方便补全，逻辑上都是单次调用时的覆盖配置。
+        部分特殊method可能需要额外的kwargs参数，具体请参考各子类实现文档。
         
         Args:
             text: 输入文本，支持字符串或字符串列表
@@ -731,7 +732,7 @@ class TranslatorBase(abc.ABC):
 
     def validate_config(self):
         """验证配置"""
-        if not self.config.api_key:
+        if not self.DEFAULT_API_KEY and not self.config.api_key:
             raise ConfigurationError("API密钥未配置")
             
         if not self.config.target_lang:
@@ -745,11 +746,12 @@ class TranslatorBase(abc.ABC):
                         raise ConfigurationError(f'配置项{targetKeyName}不存在或未配置')
                     
                 targetKeyType = DescribeAPI.get('type')
-                if targetKeyType == 'string' and not isinstance(getattr(self, targetKeyName), str):
+                targetKeyContent = getattr(self, targetKeyName)
+                if targetKeyType == 'string' and targetKeyContent and not isinstance(targetKeyContent, str):
                     warnings.warn(f'配置项{targetKeyName}类型错误，应为字符串类型', RuntimeWarning)
-                elif targetKeyType == 'number' and not isinstance(getattr(self, targetKeyName), (int, float)):
+                elif targetKeyType == 'number' and targetKeyContent and not isinstance(targetKeyContent, (int, float)):
                     warnings.warn(f'配置项{targetKeyName}类型错误，应为数字类型', RuntimeWarning)
-                elif targetKeyType == 'boolean' and not isinstance(getattr(self, targetKeyName), bool):
+                elif targetKeyType == 'boolean' and targetKeyContent and not isinstance(targetKeyContent, bool):
                     warnings.warn(f'配置项{targetKeyName}类型错误，应为布尔类型', RuntimeWarning)
 
     # ==================== 缓存管理 ====================

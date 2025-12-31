@@ -6,7 +6,7 @@ import base64
 import hashlib
 import hmac
 import time
-import os
+import random
 import requests
 from typing import Dict, Any, Optional
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
@@ -27,6 +27,44 @@ class TencentTranslator(TranslatorBase):
     # Tencent翻译API端点
     BASE_ENDPOINT = "https://tmt.tencentcloudapi.com"
     
+    DEFAULT_API_KEY = {
+        "ecret_id": "",
+        "secret_key": "",
+        "project_id": 0,
+        "region": "ap-beijing"
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "secret_id",
+            "name": "Secret ID",
+            "description": "腾讯云API密钥Secret ID",
+            "required": True,
+            "type": "string"
+        },
+        {
+            "id": "secret_key",
+            "name": "Secret Key",
+            "description": "腾讯云API密钥Secret Key",
+            "required": True,
+            "type": "string"
+        },
+        {
+            "id": "project_id",
+            "name": "项目ID",
+            "description": "腾讯云翻译项目ID",
+            "required": False,
+            "type": "number"
+        },
+        {
+            "id": "region",
+            "name": "地区",
+            "description": "腾讯云翻译区域",
+            "required": False,
+            "type": "string"
+        }
+    ]
+    
     METADATA = Metadata(
         console_url="https://cloud.tencent.com/product/tmt",
         description="Tencent翻译服务实现，腾讯云提供的翻译服务",
@@ -41,32 +79,9 @@ class TencentTranslator(TranslatorBase):
         
         Args:
             config: 翻译配置对象
-            **kwargs: 额外配置参数，支持secret_id, secret_key等
+            **kwargs: 额外配置参数
         """
-        config = config or self.DEFAULT_CONFIG
-        self.secret_id = config.api_key.get('tencent_secret_id', kwargs.get('secret_id', ''))
-        self.secret_key = config.api_key.get('tencent_secret_key', kwargs.get('secret_key', ''))
-        self.proxies = kwargs.get('proxies', None)
-
-        # 验证必需的认证信息
-        if not self.secret_id:
-            raise ConfigurationError("Tencent翻译需要Secret ID，获取地址: https://console.cloud.tencent.com/capi")
-        if not self.secret_key:
-            raise ConfigurationError("Tencent翻译需要Secret Key")
-
-        # 更新配置中的认证信息
-        config.api_key['tencent_secret_id'] = self.secret_id
-        config.api_key['tencent_secret_key'] = self.secret_key
-
         super().__init__(config, **kwargs)
-
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.secret_id:
-            raise ConfigurationError("Tencent Secret ID未配置")
-        if not self.secret_key:
-            raise ConfigurationError("Tencent Secret Key未配置")
 
     def _create_signature(self, params: dict) -> str:
         """创建请求签名"""
@@ -83,7 +98,7 @@ class TencentTranslator(TranslatorBase):
         # 对签名进行Base64编码
         return base64.b64encode(hmac_str).decode("utf8")
 
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Tencent翻译API
         
@@ -96,9 +111,9 @@ class TencentTranslator(TranslatorBase):
         # 构建请求参数
         params = {
             "Action": "TextTranslate",
-            "Nonce": 11886,  # 随机正整数，实际应用中应该生成随机数
-            "ProjectId": 0,   # 默认项目ID
-            "Region": kwargs.get("region", "ap-beijing"),  # 区域，默认北京
+            "Nonce": random.randint(1, 65536),
+            "ProjectId": self.project_id,
+            "Region": self.region,
             "SecretId": self.secret_id,
             "Source": source_lang,
             "SourceText": text,
@@ -139,105 +154,3 @@ class TencentTranslator(TranslatorBase):
             raise APIError("Tencent API响应中未找到翻译结果")
 
         return target_text
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
-
-    def translate_with_region(self, text: str, source_lang: str = None, target_lang: str = None, region: str = "ap-beijing") -> str:
-        """
-        使用指定区域进行翻译
-        
-        Args:
-            text: 要翻译的文本
-            source_lang: 源语言
-            target_lang: 目标语言
-            region: 腾讯云服务区域
-            
-        Returns:
-            翻译结果
-        """
-        source_lang = source_lang or self.config.source_lang
-        target_lang = target_lang or self.config.target_lang
-
-        self._validate_languages(source_lang, target_lang)
-
-        # 构建请求参数
-        params = {
-            "Action": "TextTranslate",
-            "Nonce": 11886,
-            "ProjectId": 0,
-            "Region": region,
-            "SecretId": self.secret_id,
-            "Source": source_lang,
-            "SourceText": text,
-            "Target": target_lang,
-            "Timestamp": int(time.time()),
-            "Version": "2018-03-21",
-        }
-
-        # 创建签名
-        params["Signature"] = self._create_signature(params)
-
-        # 发送请求
-        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
-
-        if response.status_code != 200:
-            raise APIError(f"Tencent API错误: {response.status_code} - {response.text}")
-
-        response.raise_for_status()
-        result = response.json()
-
-        if "Response" in result and "Error" in result["Response"]:
-            error_info = result["Response"]["Error"]
-            raise APIError(f"Tencent API错误: {error_info.get('Code', 'Unknown')} - {error_info.get('Message', 'Unknown error')}")
-
-        target_text = result["Response"].get("TargetText", "")
-        if not target_text:
-            raise APIError("Tencent API响应中未找到翻译结果")
-
-        return target_text
-
-    def get_special_api_reference(self) -> Dict[str, Any]:
-        """
-        获取Tencent翻译特殊API方法的引用规范
-        """
-        return {
-            "translate_with_region": {
-                "description": "使用指定区域进行翻译，可以选择不同的腾讯云服务区域以优化性能",
-                "parameters": {
-                    "text": "要翻译的文本",
-                    "source_lang": "源语言（可选，默认使用配置）",
-                    "target_lang": "目标语言（可选，默认使用配置）",
-                    "region": "腾讯云服务区域，默认为'ap-beijing'"
-                },
-                "return_type": "str 翻译结果",
-                "example": "translator.translate_with_region('Hello world', 'en', 'zh', 'ap-shanghai')"
-            },
-            "get_supported_languages": {
-                "description": "获取Tencent支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码映射字典",
-                "example": "translator.get_supported_languages()"
-            }
-        }

@@ -2,8 +2,7 @@
 Libre翻译服务实现
 """
 
-import os
-import requests
+import warnings
 from typing import Dict, Any, Optional
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
@@ -19,6 +18,36 @@ class LibreTranslator(TranslatorBase):
         "pt": "Portuguese", "ru": "Russian", "es": "Spanish", "tr": "Turkish",
         "vi": "Vietnamese","auto": "auto"
     }
+    
+    DEFAULT_API_KEY = {
+        "api_key": "",
+        "use_free_api": True,
+        "custom_url": None
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "api_key",
+            "name": "Libre翻译API密钥",
+            "type": "string",
+            "required": False,
+            "description": "Libre翻译API密钥"
+        },
+        {
+            "id": "use_free_api",
+            "name": "使用免费API",
+            "type": "boolean",
+            "required": False,
+            "description": "是否使用免费API"
+        },
+        {
+            "id": "custom_url",
+            "name": "自定义URL",
+            "type": "string",
+            "required": False,
+            "description": "Libre翻译API的URL"
+        }
+    ]
     
     # Libre翻译API端点
     BASE_ENDPOINT = "https://libretranslate.com/"
@@ -39,34 +68,26 @@ class LibreTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持api_key, use_free_api, custom_url等
         """
-        config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('libre_api_key', kwargs.get('api_key', ''))
-        self.use_free_api = kwargs.get('use_free_api', True)
-        self.custom_url = kwargs.get('custom_url', None)
-        self.proxies = kwargs.get('proxies', None)
-
-        # 如果使用需要API密钥的实例，则需要API密钥
+        super().__init__(config, **kwargs)
+        try:
+            self.SUPPORTED_LANGUAGES = self.get_supported_languages()
+        except Exception as e:
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
+    def validate_config(self):
+        """验证配置"""
+        super().validate_config()
         if not self.use_free_api and not self.api_key:
             raise ConfigurationError("Libre翻译实例需要API密钥")
 
+    def _update_inner_config(self):
+        super()._update_inner_config()
+        
         # 如果提供了自定义URL，更新BASE_ENDPOINT
         if self.custom_url:
             self.BASE_ENDPOINT = self.custom_url
 
-        # 更新配置中的API密钥
-        if self.api_key:
-            config.api_key['libre_api_key'] = self.api_key
 
-        super().__init__(config, **kwargs)
-
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        # 如果不是使用免费API且没有API密钥，则抛出错误
-        if not self.use_free_api and not self.api_key:
-            raise ConfigurationError("非免费Libre翻译实例需要API密钥")
-
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Libre翻译API
         
@@ -127,30 +148,6 @@ class LibreTranslator(TranslatorBase):
         except Exception as e:
             self.logger.warning(f"无法从API获取语言列表，使用默认列表: {e}")
             return self.SUPPORTED_LANGUAGES.copy()
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
 
     def detect_language(self, text: str) -> Dict[str, Any]:
         """

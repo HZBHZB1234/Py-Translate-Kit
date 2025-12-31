@@ -67,24 +67,10 @@ class GoogleTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数
         """
-        # Google翻译不需要API密钥，因此重新设置配置
-        config = config or self.DEFAULT_CONFIG
         super().__init__(config, **kwargs)
-        if not config.api_key:
-            config.api_key = {}  # Google翻译不需要API密钥
-        
-        self.validate_config()        
-        # 设置代理
-        self.proxies = kwargs.get('proxies', None)
         self._alt_element_query = {"class": "result-container"}
 
-    def validate_config(self):
-        """验证配置 - Google翻译不需要特殊配置验证"""
-        # Google翻译不需要API密钥，但需要验证基本配置
-        if not self.config.target_lang:
-            raise ConfigurationError("目标语言未配置")
-
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Google翻译API
         
@@ -148,19 +134,3 @@ class GoogleTranslator(TranslatorBase):
                 
         return translated_text
 
-    def get_special_api_reference(self) -> Dict[str, Any]:
-        """
-        获取Google翻译特殊API方法的引用规范
-        """
-        return {
-            "get_language_support": {
-                "description": "获取Google翻译支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码映射字典",
-                "example": "translator.get_language_support()"
-            }
-        }
-
-    def get_language_support(self) -> Dict[str, str]:
-        """获取支持的语言列表"""
-        return self.SUPPORTED_LANGUAGES.copy()

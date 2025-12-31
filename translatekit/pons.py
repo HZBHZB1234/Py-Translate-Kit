@@ -39,20 +39,11 @@ class PonsTranslator(TranslatorBase):
         
         Args:
             config: 翻译配置对象
-            **kwargs: 额外配置参数，支持proxies等
+            **kwargs: 额外配置参数
         """
-        config = config or self.DEFAULT_CONFIG
-        self.proxies = kwargs.get('proxies', None)
-
         super().__init__(config, **kwargs)
 
-    def validate_config(self):
-        """验证配置 - Pons不需要特殊配置验证"""
-        # Pons是免费服务，不需要API密钥，仅验证基本配置
-        if not self.config.target_lang:
-            raise ConfigurationError("目标语言未配置")
-
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Pons翻译API（实际是网页抓取）
         
@@ -178,48 +169,6 @@ class PonsTranslator(TranslatorBase):
 
         return word_list if return_all else word_list[0]
 
-    def translate_words(self, words: List[str], **kwargs) -> List[str]:
-        """
-        批量翻译单词
-        
-        Args:
-            words: 要翻译的单词列表
-            
-        Returns:
-            翻译后的单词列表
-        """
-        if not words:
-            raise APIError("单词列表不能为空")
-
-        translated_words = []
-        for word in words:
-            translated_words.append(self.translate_word(word=word, **kwargs))
-        return translated_words
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_supported_languages()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
-
     def get_special_api_reference(self) -> Dict[str, Any]:
         """
         获取Pons翻译特殊API方法的引用规范
@@ -233,13 +182,5 @@ class PonsTranslator(TranslatorBase):
                 },
                 "return_type": "Union[str, List[str]] 单个翻译结果或翻译结果列表",
                 "example": "translator.translate_word('hello', return_all=True)"
-            },
-            "translate_words": {
-                "description": "批量翻译单词列表",
-                "parameters": {
-                    "words": "要翻译的单词列表"
-                },
-                "return_type": "List[str] 翻译后的单词列表",
-                "example": "translator.translate_words(['hello', 'world'])"
             }
         }

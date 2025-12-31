@@ -2,8 +2,6 @@
 DeepL翻译服务实现
 """
 
-import os
-import requests
 from typing import Dict, Any, Optional, List
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 

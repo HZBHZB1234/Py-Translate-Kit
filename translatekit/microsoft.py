@@ -2,9 +2,7 @@
 Microsoft翻译服务实现
 """
 
-import os
-import requests
-import logging
+import warnings
 from typing import Dict, Any, Optional, List
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
@@ -14,6 +12,60 @@ class MicrosoftTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "microsoft_translator"
     SUPPORTED_LANGUAGES = {}  # 将在初始化时从API获取
+    
+    DEFAULT_API_KEY = {
+        "api_key": "",
+        "region": "",
+        "category": "general",
+        "text_type": "plain",
+        "profanity_action": "NoAction",
+        "sentence_splitting": False
+    }
+    
+    DESCRIBE_API_KEY = [
+        {
+            "id": "api_key",
+            "name": "Microsoft翻译API密钥",
+            "type": "string",
+            "required": True,
+            "description": "Microsoft翻译API密钥"
+        },
+        {
+            "id": "region",
+            "name": "区域",
+            "type": "string",
+            "required": False,
+            "description": "Microsoft翻译API的区域"
+        },
+        {
+            "id": "category",
+            "name": "分类",
+            "type": "string",
+            "required": False,
+            "description": "翻译的分类，比如通用、新闻等"
+        },
+        {
+            "id": "text_type",
+            "name": "文本类型",
+            "type": "string",
+            "required": False,
+            "description": "文本类型（plain或html）"
+        },
+        {
+            "id": "profanity_action",
+            "name": "脏话处理",
+            "type": "string",
+            "required": False,
+            "description": "翻译到脏话时处理方式（NoAction, Marked, Deleted）"
+        },
+        {
+            "id": "sentence_splitting",
+            "name": "句子拆分",
+            "type": "boolean",
+            "required": False,
+            "description": "是否启用句子拆分"
+        }
+    ]
     
     # Microsoft翻译API端点
     BASE_ENDPOINT = "https://api.cognitive.microsofttranslator.com/translate"
@@ -33,32 +85,14 @@ class MicrosoftTranslator(TranslatorBase):
         
         Args:
             config: 翻译配置对象
-            **kwargs: 额外配置参数，支持api_key, region等
+            **kwargs: 额外配置参数
         """
-        config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('microsoft_api_key', kwargs.get('api_key', ''))
-        self.region = config.api_key.get('microsoft_region', kwargs.get('region', ''))
-        self.proxies = kwargs.get('proxies', None)
-        self.category = kwargs.get('category', 'general')
-        self.text_type = kwargs.get('text_type', 'plain')
-        self.profanity_action = kwargs.get('profanity_action', 'NoAction')
-        self.sentence_splitting = kwargs.get('sentence_splitting', False)
-
-        # 从环境变量或配置中获取API密钥
-        if not self.api_key:
-            raise ConfigurationError("Microsoft翻译需要API密钥")
-
-        # 更新配置中的API密钥
-        config.api_key['microsoft_api_key'] = self.api_key
-        if self.region:
-            config.api_key['microsoft_region'] = self.region
-
         super().__init__(config, **kwargs)
 
-        # 获取支持的语言列表
-        self._supported_languages = self._get_supported_languages()
-        # 更新类属性以反映实际支持的语言
-        self.SUPPORTED_LANGUAGES = self._supported_languages
+        try:
+            self.SUPPORTED_LANGUAGES = self.get_supported_languages()
+        except Exception as e:
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
 
         # 设置请求头
         self.headers = {
@@ -99,13 +133,7 @@ class MicrosoftTranslator(TranslatorBase):
                 "auto": "auto"
             }
 
-    def validate_config(self):
-        """验证配置"""
-        super().validate_config()
-        if not self.api_key:
-            raise ConfigurationError("Microsoft API密钥未配置")
-
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用Microsoft翻译API
         
@@ -145,7 +173,6 @@ class MicrosoftTranslator(TranslatorBase):
             params=params,
             headers=self.headers,
             json=body,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
 
@@ -177,34 +204,6 @@ class MicrosoftTranslator(TranslatorBase):
         translated_texts = [item["text"] for item in translations]
         return "\n".join(translated_texts)
 
-    def get_language_support(self) -> Dict[str, str]:
-        """获取支持的语言列表"""
-        return self._supported_languages.copy()
-
-    def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
-        """验证语言代码 - 支持语言代码和语言名称两种格式"""
-        supported = self.get_language_support()
-        
-        # 如果是'auto'且为源语言，返回True
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
-            
-        # 检查是否是语言代码（如'en'）
-        for name, code in supported.items():
-            if code == lang_code:
-                return True
-                
-        # 检查是否是语言名称（如'english'）
-        return lang_code in supported
-
-    def _validate_languages(self, source_lang: str, target_lang: str):
-        """验证语言对"""
-        if not self.validate_language(source_lang, 'source'):
-            raise ValueError(f"不支持的源语言: {source_lang}")
-            
-        if not self.validate_language(target_lang, 'target'):
-            raise ValueError(f"不支持的目标语言: {target_lang}")
-
     def get_detected_language(self, text: str) -> Dict[str, Any]:
         """
         检测文本语言
@@ -222,7 +221,6 @@ class MicrosoftTranslator(TranslatorBase):
             detect_url,
             headers=self.headers,
             json=body,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
         response.raise_for_status()
@@ -247,7 +245,6 @@ class MicrosoftTranslator(TranslatorBase):
             transliterate_url,
             headers=self.headers,
             json=body,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
         response.raise_for_status()
@@ -259,12 +256,6 @@ class MicrosoftTranslator(TranslatorBase):
         获取Microsoft翻译特殊API方法的引用规范
         """
         return {
-            "get_language_support": {
-                "description": "获取Microsoft翻译支持的语言列表",
-                "parameters": {},
-                "return_type": "Dict[str, str] 语言代码映射字典",
-                "example": "translator.get_language_support()"
-            },
             "get_detected_language": {
                 "description": "检测输入文本的语言",
                 "parameters": {
@@ -284,10 +275,6 @@ class MicrosoftTranslator(TranslatorBase):
                 "example": "translator.transliterate_text('Привет', 'ru', 'Latn')"
             }
         }
-
-    def set_category(self, category: str):
-        """设置翻译类别（如通用、新闻等）"""
-        self.category = category
 
     def set_text_type(self, text_type: str):
         """设置文本类型（plain或html）"""
