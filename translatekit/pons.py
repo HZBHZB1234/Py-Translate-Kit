@@ -66,7 +66,7 @@ class PonsTranslator(TranslatorBase):
         url = f"{self.BASE_ENDPOINT}{source_lang}-{target_lang}/{text}"
         url = requote_uri(url)
         
-        response = requests.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(url, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Pons API请求频率超限，请稍后重试")
@@ -139,7 +139,7 @@ class PonsTranslator(TranslatorBase):
         url = f"{self.BASE_ENDPOINT}{self.config.source_lang}-{self.config.target_lang}/{word}"
         url = requote_uri(url)
         
-        response = requests.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(url, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Pons API请求频率超限，请稍后重试")

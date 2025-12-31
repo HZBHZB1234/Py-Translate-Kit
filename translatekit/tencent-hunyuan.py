@@ -126,7 +126,7 @@ class TencentHunyuanTranslator(TranslatorBase):
         }
         
         # 发送请求
-        response = requests.post(
+        response = self.session.post(
             url,
             headers=headers,
             json=params,
@@ -170,7 +170,7 @@ class TencentHunyuanTranslator(TranslatorBase):
             "Authorization": signature
         }
         
-        response = requests.post(
+        response = self.session.post(
             url,
             headers=headers,
             json=params,

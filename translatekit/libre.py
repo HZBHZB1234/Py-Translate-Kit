@@ -89,7 +89,7 @@ class LibreTranslator(TranslatorBase):
             params["api_key"] = self.api_key
 
         url = f"{self.BASE_ENDPOINT.rstrip('/')}/{translate_endpoint}"
-        response = requests.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 403:
             raise APIError("Libre API访问被拒绝，请检查API密钥是否正确")
@@ -114,7 +114,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = requests.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             response.raise_for_status()
             languages_data = response.json()
 
@@ -170,7 +170,7 @@ class LibreTranslator(TranslatorBase):
         if self.api_key:
             params["api_key"] = self.api_key
 
-        response = requests.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
         response.raise_for_status()
         return response.json()
 
@@ -185,7 +185,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = requests.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:

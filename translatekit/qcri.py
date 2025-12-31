@@ -67,7 +67,7 @@ class QcriTranslator(TranslatorBase):
             params = {"key": self.api_key}
         try:
             url = self.BASE_ENDPOINT + self.api_endpoints[endpoint]
-            res = requests.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            res = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             return res.text if return_text else res
         except Exception as e:
             raise APIError(f"Qcri API请求错误: {e}")

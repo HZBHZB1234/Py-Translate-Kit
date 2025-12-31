@@ -169,7 +169,7 @@ class MyMemoryTranslator(TranslatorBase):
         if self.email:
             params["de"] = self.email
 
-        response = requests.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("MyMemory API请求频率超限，请稍后重试")
@@ -222,7 +222,7 @@ class MyMemoryTranslator(TranslatorBase):
         if self.email:
             params["de"] = self.email
 
-        response = requests.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
         response.raise_for_status()
         response_data = response.json()
 

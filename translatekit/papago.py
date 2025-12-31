@@ -80,7 +80,7 @@ class PapagoTranslator(TranslatorBase):
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         }
 
-        response = requests.post(self.BASE_ENDPOINT, headers=headers, data=payload, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.post(self.BASE_ENDPOINT, headers=headers, data=payload, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code >= 400:
             raise APIError(f"Papago API错误: {response.status_code} - {response.text}")

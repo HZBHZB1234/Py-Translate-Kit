@@ -108,7 +108,7 @@ class GoogleTranslator(TranslatorBase):
         }
 
         # 发送请求
-        response = requests.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
         response.raise_for_status()
         
         # 解析响应

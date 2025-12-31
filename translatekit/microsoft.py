@@ -73,7 +73,7 @@ class MicrosoftTranslator(TranslatorBase):
         """从Microsoft API获取支持的语言列表"""
         try:
             languages_url = f"https://api.cognitive.microsofttranslator.com/languages?api-version=3.0&scope=translation"
-            response = requests.get(languages_url, timeout=self.config.timeout)
+            response = self.session.get(languages_url, timeout=self.config.timeout)
             response.raise_for_status()
             
             translation_dict = response.json()["translation"]
@@ -140,7 +140,7 @@ class MicrosoftTranslator(TranslatorBase):
             params['sentenceLength'] = 'true'
 
         # 发送请求
-        response = requests.post(
+        response = self.session.post(
             self.BASE_ENDPOINT,
             params=params,
             headers=self.headers,
@@ -218,7 +218,7 @@ class MicrosoftTranslator(TranslatorBase):
         detect_url = f"https://api.cognitive.microsofttranslator.com/detect?api-version=3.0"
         body = [{"text": text}]
 
-        response = requests.post(
+        response = self.session.post(
             detect_url,
             headers=self.headers,
             json=body,
@@ -243,7 +243,7 @@ class MicrosoftTranslator(TranslatorBase):
         transliterate_url = f"https://api.cognitive.microsofttranslator.com/transliterate?api-version=3.0&language={source_lang}&toScript={target_script}"
         body = [{"text": text}]
 
-        response = requests.post(
+        response = self.session.post(
             transliterate_url,
             headers=self.headers,
             json=body,

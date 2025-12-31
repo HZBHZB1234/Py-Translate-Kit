@@ -96,7 +96,7 @@ class YandexTranslator(TranslatorBase):
             url = self.BASE_ENDPOINT.format(endpoint="languages")
             params = {"folderId": self.folder_id} if self.folder_id else {}
             
-            response = requests.get(
+            response = self.session.get(
                 url,
                 headers=self._get_headers(),
                 params=params,
@@ -161,7 +161,7 @@ class YandexTranslator(TranslatorBase):
         if source_lang != "auto":
             body["sourceLanguageCode"] = source_lang
             
-        response = requests.post(
+        response = self.session.post(
             url,
             headers=self._get_headers(),
             json=body,
@@ -214,7 +214,7 @@ class YandexTranslator(TranslatorBase):
         if self.folder_id:
             body["folderId"] = self.folder_id
 
-        response = requests.post(
+        response = self.session.post(
             url,
             headers=self._get_headers(),
             json=body,

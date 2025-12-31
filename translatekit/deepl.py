@@ -7,6 +7,7 @@ import requests
 from typing import Dict, Any, Optional, List
 from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
 
+
 class DeepLTranslator(TranslatorBase):
     """DeepL翻译服务实现类"""
     
@@ -35,6 +36,86 @@ class DeepLTranslator(TranslatorBase):
         usage_documentation="需要API密钥，支持多种语言，翻译质量高"
     )
     
+    # 默认API配置
+    DEFAULT_API_KEY = {
+        "api_key": "",
+        "use_free_api": True,
+        "glossary_id": None,
+        "preserve_formatting": False,
+        "tag_handling": "xml",
+        "context": None,
+        "split_sentences": "1",
+        "prevent_implicit_spaces": False,
+        "formality": None
+    }
+    
+    # API参数描述
+    DESCRIBE_API_KEY = [
+        {
+            "id": "api_key",
+            "name": "DeepL API密钥",
+            "type": "string",
+            "required": True,
+            "description": "DeepL翻译服务的API密钥，可从DeepL控制台获取"
+        },
+        {
+            "id": "use_free_api",
+            "name": "使用免费API",
+            "type": "boolean",
+            "required": False,
+            "description": "是否使用免费版API，默认为True，免费版使用api-free.deepl.com端点"
+        },
+        {
+            "id": "glossary_id",
+            "name": "术语表ID",
+            "type": "string",
+            "required": False,
+            "description": "用于翻译的术语表ID，需提前在DeepL控制台创建"
+        },
+        {
+            "id": "preserve_formatting",
+            "name": "保留格式",
+            "type": "boolean",
+            "required": False,
+            "description": "是否保留原文格式，默认为False"
+        },
+        {
+            "id": "tag_handling",
+            "name": "标签处理",
+            "type": "string",
+            "required": False,
+            "description": "指定的标签处理方式，默认为'xml'"
+        },
+        {
+            "id": "context",
+            "name": "上下文",
+            "type": "string",
+            "required": False,
+            "description": "提供额外的上下文信息以改善翻译"
+        },
+        {
+            "id": "split_sentences",
+            "name": "句子分割",
+            "type": "string",
+            "required": False,
+            "description": "控制句子分割的方式，默认为'1'"
+        },
+        {
+            "id": "prevent_implicit_spaces",
+            "name": "防止隐式空格",
+            "type": "boolean",
+            "required": False,
+            "description": "是否防止在标签周围添加隐式空格，默认为False"
+        },
+        {
+            "id": "formality",
+            "name": "正式程度",
+            "type": "string",
+            "required": False,
+            "description": "翻译的正式程度，可选值为'default'、'more'、'less'"
+        }
+    ]
+    
     def __init__(self, config: Optional[TranslationConfig] = None, **kwargs):
         """
         初始化DeepL翻译器
@@ -43,26 +124,19 @@ class DeepLTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持api_key, use_free_api等
         """
-        config = config or self.DEFAULT_CONFIG
-        self.api_key = config.api_key.get('deepl_api_key', kwargs.get('api_key', ''))
-        self.use_free_api = kwargs.get('use_free_api', True)
-        self.proxies = kwargs.get('proxies', None)
-        self.glossary_id = kwargs.get('glossary_id', None)
-        self.preserve_formatting = kwargs.get('preserve_formatting', False)
-        self.tag_handling = kwargs.get('tag_handling', 'xml')
-        self.context = kwargs.get('context', None)
-        self.split_sentences = kwargs.get('split_sentences', '1')
-        self.prevent_implicit_spaces = kwargs.get('prevent_implicit_spaces', False)
-        self.formality = kwargs.get('formality', None)
+        super().__init__(config,** kwargs)
+        
+        # 从配置中获取API参数
+        self.api_key = self.config.api_key.get('api_key', '')
+        self.use_free_api = self.config.api_key.get('use_free_api', True)
+        self.glossary_id = self.config.api_key.get('glossary_id', None)
+        self.preserve_formatting = self.config.api_key.get('preserve_formatting', False)
+        self.tag_handling = self.config.api_key.get('tag_handling', 'xml')
+        self.context = self.config.api_key.get('context', None)
+        self.split_sentences = self.config.api_key.get('split_sentences', '1')
+        self.prevent_implicit_spaces = self.config.api_key.get('prevent_implicit_spaces', False)
+        self.formality = self.config.api_key.get('formality', None)
 
-        # 从环境变量或配置中获取API密钥
-        if not self.use_free_api and not self.api_key:
-            raise ConfigurationError("DeepL翻译需要API密钥")
-
-        # 更新配置中的API密钥
-        config.api_key['deepl_api_key'] = self.api_key
-
-        super().__init__(config, **kwargs)
         self.validate_config()
 
         # 根据是否使用免费API设置正确的端点
@@ -75,7 +149,7 @@ class DeepLTranslator(TranslatorBase):
         if not self.api_key:
             raise ConfigurationError("DeepL API密钥未配置")
 
-    def _call_translate_api(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
+    def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """
         调用DeepL翻译API
         
@@ -116,11 +190,10 @@ class DeepLTranslator(TranslatorBase):
             data['formality'] = self.formality
 
         # 发送请求
-        response = requests.post(
+        response = self.session.post(
             f"{self.BASE_ENDPOINT}{self.TRANSLATE_ENDPOINT}",
             headers=headers,
             data=data,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
 
@@ -155,10 +228,9 @@ class DeepLTranslator(TranslatorBase):
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        response = requests.post(
+        response = self.session.post(
             f"{self.BASE_ENDPOINT}usage",
             headers=headers,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
         response.raise_for_status()
@@ -199,10 +271,9 @@ class DeepLTranslator(TranslatorBase):
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        response = requests.get(
+        response = self.session.get(
             f"{self.BASE_ENDPOINT}glossaries",
             headers=headers,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
         response.raise_for_status()

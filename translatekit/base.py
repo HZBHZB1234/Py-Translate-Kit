@@ -9,6 +9,7 @@ import abc
 import logging
 import time
 import threading
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Union, Callable, Any, Tuple
 from functools import wraps
@@ -189,6 +190,7 @@ class TranslatorBase(abc.ABC):
         self._cache = {} if self.config.enable_cache else None
         self._metrics = {} if self.config.enable_metrics else None
         self._executor = None
+        self._session = self.session.session()
         self._process_pre = []
         self._process_post = []
         
@@ -357,19 +359,25 @@ class TranslatorBase(abc.ABC):
         """包装翻译函数"""
         self.logger.debug(f"直接翻译: {text[:50]}...")
         
+        # 预处理文本
+        processed_text = self._preprocess_text(text, **kwargs)
+        
         # 应用速率限制
         self._apply_rate_limiting()
         
         # 调用API
-        response = translate_func(text, source_lang, target_lang, **kwargs)
+        response = translate_func(processed_text, source_lang, target_lang, **kwargs)
         
         # 解析响应
         result = self._parse_api_response(response, **kwargs)
         
-        # 更新使用量统计
-        self._update_usage_metrics(text, result)
+        # 后处理结果
+        final_result = self._postprocess_text(result, **kwargs)
         
-        return result
+        # 更新使用量统计
+        self._update_usage_metrics(text, final_result)
+        
+        return final_result
 
     def _translate_parallel(self, texts: List[str], source_lang: str, target_lang: str,
                            translate_func: Callable, **kwargs) -> List[str]:

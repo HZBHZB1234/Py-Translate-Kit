@@ -111,7 +111,7 @@ class TencentTranslator(TranslatorBase):
         params["Signature"] = self._create_signature(params)
 
         # 发送请求
-        response = requests.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code != 200:
             raise APIError(f"Tencent API错误: {response.status_code} - {response.text}")
@@ -200,7 +200,7 @@ class TencentTranslator(TranslatorBase):
         params["Signature"] = self._create_signature(params)
 
         # 发送请求
-        response = requests.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self.session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code != 200:
             raise APIError(f"Tencent API错误: {response.status_code} - {response.text}")
