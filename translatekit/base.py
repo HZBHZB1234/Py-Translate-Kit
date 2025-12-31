@@ -10,6 +10,7 @@ import logging
 import time
 import threading
 import requests
+import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Union, Callable, Any, Tuple
 from functools import wraps
@@ -165,6 +166,7 @@ class TranslatorBase(abc.ABC):
     SUPPORTED_LANGUAGES = {}
     DEFAULT_CONFIG = TranslationConfig()
     DEFAULT_API_KEY = {}
+    DESCRIBE_API_KEY = {}
     
     METADATA = Metadata(
         console_url="",
@@ -190,15 +192,38 @@ class TranslatorBase(abc.ABC):
         self._cache = {} if self.config.enable_cache else None
         self._metrics = {} if self.config.enable_metrics else None
         self._executor = None
-        self._session = self.session.session()
+        self._session = requests.session()
         self._process_pre = []
         self._process_post = []
         
         if kwargs:
             self._update_config_from_kwargs(kwargs)
         
+        self._update_inner_config()
+
+        self.validate_config()
+        
         self.logger.debug(f"{self.SERVICE_NAME} 初始化完成")
 
+    def update_config(self, config: Optional[TranslationConfig] = None, **kwargs):
+        """更新翻译类中的config，语法逻辑与初始化时类似
+        Args:
+            config: 为该次操作应用特殊配置
+            **kwargs: 单次特殊配置额外参数
+            
+        Returns:
+            无返回结果，直接修改实例的config属性
+        """
+        if config is not None:
+            self.config = config
+        
+        if kwargs:
+            self._update_config_from_kwargs(kwargs)
+        
+        self._update_inner_config()
+
+        self.validate_config()
+        
     def get_metadata(self) -> Dict[str, Any]:
         """获取翻译器元数据信息"""
         return {
@@ -240,16 +265,20 @@ class TranslatorBase(abc.ABC):
                   source_lang: Optional[str] = None,
                   target_lang: Optional[str] = None,
                   method: Optional[str] = None,
+                  config: Optional[str] = None,
                   **kwargs) -> Union[str, List[str]]:
         """
         智能翻译主接口
+        该接口支持多种翻译方法，并根据输入文本长度选择合适的翻译策略，自动处理并发翻译，缓存翻译结果，提供可靠的重试机制，并提供高级功能如速率限制、使用量统计等。
+        只有text参数必要，其余参数仅为方便补全，逻辑上都是单次调用时的覆盖配置。
         
         Args:
             text: 输入文本，支持字符串或字符串列表
             source_lang: 源语言，默认使用配置
             target_lang: 目标语言，默认使用配置
-            method: 翻译方法选择，子类可自定义实现
-            **kwargs: 额外参数
+            method: 翻译方法选择，默认使用配置
+            config: 为该次操作应用特殊配置
+            **kwargs: 单次特殊配置额外参数
             
         Returns:
             翻译结果，保持输入格式
@@ -259,21 +288,22 @@ class TranslatorBase(abc.ABC):
         
         self._validate_languages(source_lang, target_lang)
         
+        if config or kwargs:
+            _temp_old_config = self.config
+            self.update_config(config, **kwargs)          
+        
         # 根据输入类型选择处理方式
         if isinstance(text, str):
-            return self._translate_single(text, source_lang, target_lang, method, **kwargs)
+            result = self._translate_single(text, source_lang, target_lang, method, **kwargs)
         elif isinstance(text, list):
-            return self._translate_batch(text, source_lang, target_lang, method, **kwargs)
+            result = self._translate_batch(text, source_lang, target_lang, method, **kwargs)
         else:
             raise ValueError(f"不支持的文本类型: {type(text)}，只支持 str 和 List[str]")
-
-    def translate_batch(self, texts: List[str],
-                        source_lang: Optional[str] = None,
-                        target_lang: Optional[str] = None,
-                        method: Optional[str] = None,
-                        **kwargs) -> List[str]:
-        """批量翻译接口"""
-        return self.translate(texts, source_lang, target_lang, method, **kwargs)
+        
+        if config or kwargs:
+            self.update_config(_temp_old_config)
+        
+        return result
 
     # ==================== 核心翻译实现 ====================
     
@@ -536,6 +566,14 @@ class TranslatorBase(abc.ABC):
         """
         pass
 
+    def _update_inner_config(self):
+        """将self.config的内容更新至类中"""
+        if self.DESCRIBE_API_KEY:
+            for targetKeyName in self.config.api_key:
+                DescribeAPI = [d for d in self.DESCRIBE_API_KEY if d['id'] == targetKeyName][0]
+                setattr(self, targetKeyName, self.config.api_key.get(targetKeyName))
+                self.logger.debug(f"设置{DescribeAPI['name']} 内容: {getattr(self, targetKeyName)}")
+
     def get_special_api_reference(self) -> Dict[str, Any]:
         """
         获取特殊API方法的引用规范
@@ -698,6 +736,21 @@ class TranslatorBase(abc.ABC):
             
         if not self.config.target_lang:
             raise ConfigurationError("目标语言未配置")
+        
+        if self.DESCRIBE_API_KEY:
+            for DescribeAPI in self.DESCRIBE_API_KEY:
+                if DescribeAPI.get('required', False):
+                    targetKeyName = DescribeAPI.get('id')
+                    if not hasattr(self, targetKeyName) or not getattr(self, targetKeyName):
+                        raise ConfigurationError(f'配置项{targetKeyName}不存在或未配置')
+                    
+                targetKeyType = DescribeAPI.get('type')
+                if targetKeyType == 'string' and not isinstance(getattr(self, targetKeyName), str):
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为字符串类型', RuntimeWarning)
+                elif targetKeyType == 'number' and not isinstance(getattr(self, targetKeyName), (int, float)):
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为数字类型', RuntimeWarning)
+                elif targetKeyType == 'boolean' and not isinstance(getattr(self, targetKeyName), bool):
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为布尔类型', RuntimeWarning)
 
     # ==================== 缓存管理 ====================
     
