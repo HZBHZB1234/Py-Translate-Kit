@@ -4,7 +4,7 @@ Qcri翻译服务实现
 
 import warnings
 from typing import Dict, Any, Optional, List
-from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, TranslationWarning, Metadata
 
 class QcriTranslator(TranslatorBase):
     """Qcri翻译服务实现类"""
@@ -67,7 +67,7 @@ class QcriTranslator(TranslatorBase):
         try:
             self.SUPPORTED_LANGUAGES = self.get_supported_languages()
         except Exception as e:
-            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
 
     def _get(self, endpoint: str, params: Optional[dict] = None, return_text: bool = True) -> str:
         """执行GET请求"""
@@ -75,7 +75,7 @@ class QcriTranslator(TranslatorBase):
             params = {"key": self.api_key}
         try:
             url = self.BASE_ENDPOINT + self.api_endpoints[endpoint]
-            res = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            res = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             return res.text if return_text else res
         except Exception as e:
             raise APIError(f"Qcri API请求错误: {e}")

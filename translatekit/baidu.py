@@ -119,7 +119,7 @@ class BaiduTranslator(TranslatorBase):
         }
         
         # 发送请求
-        response = self.session.get(url, params=params, timeout=self.config.timeout)
+        response = self._session.get(url, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         
         return response.json()
@@ -144,7 +144,7 @@ class BaiduTranslator(TranslatorBase):
         }
         
         # 发送请求
-        response = self.session.get(url, params=params, timeout=self.config.timeout)
+        response = self._session.get(url, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         
         return response.json()
@@ -172,7 +172,7 @@ class BaiduTranslator(TranslatorBase):
         }
         
         # 发送请求
-        response = self.session.get(url, params=params, timeout=self.config.timeout)
+        response = self._session.get(url, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         
         return response.json()
@@ -202,7 +202,7 @@ class BaiduTranslator(TranslatorBase):
         }
         
         # 发送请求
-        response = self.session.get(url, params=params, timeout=self.config.timeout)
+        response = self._session.get(url, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         
         result = response.json()
@@ -255,7 +255,7 @@ class BaiduTranslator(TranslatorBase):
         headers = self._create_doc_headers(timestamp, sign)
         
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             url, 
             headers=headers, 
             json=input_data,
@@ -290,7 +290,7 @@ class BaiduTranslator(TranslatorBase):
         headers = self._create_doc_headers(timestamp, sign)
         
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             url, 
             headers=headers, 
             json=input_data,
@@ -330,7 +330,7 @@ class BaiduTranslator(TranslatorBase):
         headers = self._create_doc_headers(timestamp, sign)
         
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             url, 
             headers=headers, 
             json=input_data,
@@ -357,7 +357,7 @@ class BaiduTranslator(TranslatorBase):
         headers = self._create_doc_headers(timestamp, sign)
         
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             url, 
             headers=headers, 
             json=input_data,

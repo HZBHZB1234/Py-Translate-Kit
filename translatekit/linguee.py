@@ -60,7 +60,7 @@ class LingueeTranslator(TranslatorBase):
         url = f"{self.BASE_ENDPOINT}{source_lang}-{target_lang}/search/?source={source_lang}&query={text}"
         url = requote_uri(url)
         
-        response = self.session.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.get(url, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Linguee API请求频率超限，请稍后重试")
@@ -127,7 +127,7 @@ class LingueeTranslator(TranslatorBase):
         url = f"{self.BASE_ENDPOINT}{self.config.source_lang}-{self.config.target_lang}/search/?source={self.config.source_lang}&query={word}"
         url = requote_uri(url)
         
-        response = self.session.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.get(url, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Linguee API请求频率超限，请稍后重试")

@@ -4,7 +4,10 @@ Microsoft翻译服务实现
 
 import warnings
 from typing import Dict, Any, Optional, List
-from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import (TranslatorBase, TranslationConfig,
+                   APIError, TranslationWarning,
+                   ConfigurationError, ConfigWarning,
+                   Metadata)
 
 class MicrosoftTranslator(TranslatorBase):
     """Microsoft翻译服务实现类"""
@@ -92,7 +95,7 @@ class MicrosoftTranslator(TranslatorBase):
         try:
             self.SUPPORTED_LANGUAGES = self.get_supported_languages()
         except Exception as e:
-            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
 
         # 设置请求头
         self.headers = {
@@ -103,11 +106,18 @@ class MicrosoftTranslator(TranslatorBase):
         if self.region:
             self.headers["Ocp-Apim-Subscription-Region"] = self.region
 
+    def validate_config(self):
+        super().validate_config()
+        if self.text_type not in ['plain', 'html']:
+            warnings.warn("文本类型必须是 'plain' 或 'html' 中的一个", ConfigWarning)
+        if self.profanity_action not in ['NoAction', 'Marked', 'Deleted']:
+            warnings.warn("脏话处理方式必须是 'NoAction', 'Marked' 或 'Deleted' 中的一个", ConfigWarning)
+
     def _get_supported_languages(self) -> Dict[str, str]:
         """从Microsoft API获取支持的语言列表"""
         try:
             languages_url = f"https://api.cognitive.microsofttranslator.com/languages?api-version=3.0&scope=translation"
-            response = self.session.get(languages_url, timeout=self.config.timeout)
+            response = self._session.get(languages_url, timeout=self.config.timeout)
             response.raise_for_status()
             
             translation_dict = response.json()["translation"]
@@ -168,7 +178,7 @@ class MicrosoftTranslator(TranslatorBase):
             params['sentenceLength'] = 'true'
 
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             self.BASE_ENDPOINT,
             params=params,
             headers=self.headers,
@@ -217,7 +227,7 @@ class MicrosoftTranslator(TranslatorBase):
         detect_url = f"https://api.cognitive.microsofttranslator.com/detect?api-version=3.0"
         body = [{"text": text}]
 
-        response = self.session.post(
+        response = self._session.post(
             detect_url,
             headers=self.headers,
             json=body,
@@ -241,7 +251,7 @@ class MicrosoftTranslator(TranslatorBase):
         transliterate_url = f"https://api.cognitive.microsofttranslator.com/transliterate?api-version=3.0&language={source_lang}&toScript={target_script}"
         body = [{"text": text}]
 
-        response = self.session.post(
+        response = self._session.post(
             transliterate_url,
             headers=self.headers,
             json=body,

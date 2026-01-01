@@ -4,7 +4,7 @@ Libre翻译服务实现
 
 import warnings
 from typing import Dict, Any, Optional
-from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata
+from .base import TranslatorBase, TranslationConfig, APIError, ConfigurationError, Metadata, TranslationWarning
 
 class LibreTranslator(TranslatorBase):
     """Libre翻译服务实现类"""
@@ -72,7 +72,7 @@ class LibreTranslator(TranslatorBase):
         try:
             self.SUPPORTED_LANGUAGES = self.get_supported_languages()
         except Exception as e:
-            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", RuntimeWarning)
+            warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
     def validate_config(self):
         """验证配置"""
         super().validate_config()
@@ -110,7 +110,7 @@ class LibreTranslator(TranslatorBase):
             params["api_key"] = self.api_key
 
         url = f"{self.BASE_ENDPOINT.rstrip('/')}/{translate_endpoint}"
-        response = self.session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
 
         if response.status_code == 403:
             raise APIError("Libre API访问被拒绝，请检查API密钥是否正确")
@@ -135,7 +135,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             response.raise_for_status()
             languages_data = response.json()
 
@@ -167,7 +167,7 @@ class LibreTranslator(TranslatorBase):
         if self.api_key:
             params["api_key"] = self.api_key
 
-        response = self.session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
         response.raise_for_status()
         return response.json()
 
@@ -182,7 +182,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = self.session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:

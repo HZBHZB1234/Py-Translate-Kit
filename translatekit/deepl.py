@@ -170,7 +170,7 @@ class DeepLTranslator(TranslatorBase):
             data['formality'] = self.formality
 
         # 发送请求
-        response = self.session.post(
+        response = self._session.post(
             f"{self.BASE_ENDPOINT}{self.TRANSLATE_ENDPOINT}",
             headers=headers,
             data=data,
@@ -208,7 +208,7 @@ class DeepLTranslator(TranslatorBase):
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        response = self.session.post(
+        response = self._session.post(
             f"{self.BASE_ENDPOINT}usage",
             headers=headers,
             timeout=self.config.timeout
@@ -223,7 +223,7 @@ class DeepLTranslator(TranslatorBase):
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        response = self.session.get(
+        response = self._session.get(
             f"{self.BASE_ENDPOINT}glossaries",
             headers=headers,
             timeout=self.config.timeout

@@ -17,6 +17,8 @@ from .linguee import LingueeTranslator
 from .pons import PonsTranslator
 from .qcri import QcriTranslator
 from .tencent import TencentTranslator
+from .youdao import YoudaoTranslator
+from . import kit
 
 __all__ = [
     'TranslatorBase',
@@ -36,6 +38,8 @@ __all__ = [
     'PonsTranslator',
     'QcriTranslator',
     'TencentTranslator',
+    'YoudaoTranslator',
+    'kit'
 ]
 
 __version__ = "1.0.0"

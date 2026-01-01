@@ -17,6 +17,13 @@ from functools import wraps
 from dataclasses import dataclass
 from enum import Enum
 
+class ConfigWarning(RuntimeWarning):
+    """配置警告"""
+    pass
+
+class TranslationWarning(RuntimeWarning):
+    """翻译警告"""
+    pass
 
 class TranslationError(Exception):
     """翻译相关异常基类"""
@@ -138,7 +145,7 @@ def retry_on_failure(max_retries: int = 3, retry_strategy: RetryStrategy = Retry
 def with_cache(func):
     """缓存装饰器"""
     @wraps(func)
-    def wrapper(self:'TranslatorBase', text, source_lang, target_lang, **kwargs):
+    def wrapper(self:'TranslatorBase', translate_func: Callable, text, source_lang, target_lang, **kwargs):
         # 检查缓存
         cache_key = self._get_cache_key(text, source_lang, target_lang)
         if self._cache and cache_key in self._cache:
@@ -146,7 +153,7 @@ def with_cache(func):
             return self._cache[cache_key]
         
         # 执行实际函数
-        result = func(self, text, source_lang, target_lang, **kwargs)
+        result = func(self, translate_func, text, source_lang, target_lang, **kwargs)
         
         # 更新缓存
         if self._cache is not None:
@@ -195,6 +202,8 @@ class TranslatorBase(abc.ABC):
         self._session = requests.session()
         self._process_pre = []
         self._process_post = []
+        warnings.simplefilter("always", ConfigWarning)
+        warnings.simplefilter("always", TranslationWarning)
         
         if kwargs:
             self._update_config_from_kwargs(kwargs)
@@ -317,7 +326,7 @@ class TranslatorBase(abc.ABC):
         
         # 根据文本长度选择策略
         if len(text) <= self.config.text_max_length:
-            return self._translate_call(self, translate_func, text, source_lang, target_lang, **kwargs)
+            return self._translate_call(translate_func, text, source_lang, target_lang, **kwargs)
         else:
             return self._translate_long_text(text, source_lang, target_lang, translate_func, **kwargs)
 
@@ -376,7 +385,7 @@ class TranslatorBase(abc.ABC):
             # 串行翻译
             translated_chunks = []
             for chunk in chunks:
-                translated = translate_func(chunk, source_lang, target_lang, **kwargs)
+                translated = self._translate_call(translate_func, chunk, source_lang, target_lang, **kwargs)
                 translated_chunks.append(translated)
         
         # 合并结果
@@ -571,6 +580,9 @@ class TranslatorBase(abc.ABC):
         """将self.config的内容更新至类中"""
         if self.DESCRIBE_API_KEY:
             for targetKeyName in self.config.api_key:
+                if not targetKeyName in self.DEFAULT_API_KEY:
+                    warnings.warn(f"未知API KEY: {targetKeyName}", ConfigWarning)
+                    continue
                 DescribeAPI = [d for d in self.DESCRIBE_API_KEY if d['id'] == targetKeyName][0]
                 setattr(self, targetKeyName, self.config.api_key.get(targetKeyName))
                 self.logger.debug(f"设置{DescribeAPI['name']} 内容: {getattr(self, targetKeyName)}")
@@ -748,11 +760,15 @@ class TranslatorBase(abc.ABC):
                 targetKeyType = DescribeAPI.get('type')
                 targetKeyContent = getattr(self, targetKeyName)
                 if targetKeyType == 'string' and targetKeyContent and not isinstance(targetKeyContent, str):
-                    warnings.warn(f'配置项{targetKeyName}类型错误，应为字符串类型', RuntimeWarning)
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为字符串类型', ConfigWarning)
                 elif targetKeyType == 'number' and targetKeyContent and not isinstance(targetKeyContent, (int, float)):
-                    warnings.warn(f'配置项{targetKeyName}类型错误，应为数字类型', RuntimeWarning)
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为数字类型', ConfigWarning)
                 elif targetKeyType == 'boolean' and targetKeyContent and not isinstance(targetKeyContent, bool):
-                    warnings.warn(f'配置项{targetKeyName}类型错误，应为布尔类型', RuntimeWarning)
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为布尔类型', ConfigWarning)
+                elif targetKeyType == 'dictionary' and targetKeyContent and not isinstance(targetKeyContent, dict):
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为字典类型', ConfigWarning)
+                elif targetKeyType == 'list' and targetKeyContent and not isinstance(targetKeyContent, list):
+                    warnings.warn(f'配置项{targetKeyName}类型错误，应为列表类型', ConfigWarning)
 
     # ==================== 缓存管理 ====================
     
