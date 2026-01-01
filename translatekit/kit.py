@@ -2,6 +2,7 @@ from typing import List, Optional, Union, Dict, Any
 import jsonpatch
 from copy import deepcopy
 import json
+import re
 
 
 class TranslateKitError(Exception):
@@ -133,3 +134,41 @@ def apply_list_patch(_jsonpatch : List, translate_list : List) -> List:
     except StopIteration:
         pass
     return applied_patches
+
+def filted_patchs(jsonpatchs : List[dict],
+                          allow_list : List[str] = [".*"],
+                          disallow_list : List[str] = ["$."],
+                          disallow_op : List[str] = []) -> List[dict]:
+    """通过正则表达式或op过滤补丁，返回过滤后的补丁列表"""
+    # 编译正则表达式
+    allow_regex = re.compile("|".join(allow_list))
+    disallow_regex = re.compile("|".join(disallow_list))
+    
+    # 过滤补丁
+    filtered_patchs = []
+    for patch in jsonpatchs:
+        path = patch.get('path')
+        op = patch.get('op')
+        if allow_regex.search(path) and not disallow_regex.search(path) and not op in disallow_op:
+            filtered_patchs.append(patch)
+    return filtered_patchs
+
+def apply_filtered_patchs(original_jsonpatchs : List[dict],
+                          filted_jsonpatchs : List[dict],
+                          allow_list : List[str] = ['.*'],
+                          disallow_list : List[str] = ["$."],
+                          disallow_op : List[str] = []) -> List[dict]:
+    """恢复被过滤的补丁，返回恢复后的JsonPatch列表"""
+    # 编译正则表达式
+    allow_regex = re.compile("|".join(allow_list))
+    disallow_regex = re.compile("|".join(disallow_list))
+    
+    result = original_jsonpatchs.copy()
+    _filted_jsonpatchs = deepcopy(filted_jsonpatchs)
+    for index, patch in enumerate(original_jsonpatchs):
+        path = patch.get('path')
+        op = patch.get('op')
+        if allow_regex.search(path) and not disallow_regex.search(path) and not op in disallow_op:
+            result[index] = _filted_jsonpatchs.pop(0)
+
+    return result
