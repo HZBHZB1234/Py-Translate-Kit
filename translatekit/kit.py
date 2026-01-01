@@ -86,7 +86,7 @@ def deoptimize_patch(original_patch):
             if op_type == 'replace':
                 # 对于替换操作，先删除原有路径，再添加新值
                 deoptimized_patches.append({
-                    'op': 'delete',
+                    'op': 'remove',
                     'path': path
                 })
 

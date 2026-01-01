@@ -146,6 +146,8 @@ def with_cache(func):
     """缓存装饰器"""
     @wraps(func)
     def wrapper(self:'TranslatorBase', translate_func: Callable, text, source_lang, target_lang, **kwargs):
+        if self.config.enable_cache is False:
+            return func(self, translate_func, text, source_lang, target_lang, **kwargs)
         # 检查缓存
         cache_key = self._get_cache_key(text, source_lang, target_lang)
         if self._cache and cache_key in self._cache:
@@ -195,13 +197,7 @@ class TranslatorBase(abc.ABC):
         
         # 初始化组件
         self.logger = self._setup_logger()
-        self._thread_local = threading.local()
-        self._cache = {} if self.config.enable_cache else None
-        self._metrics = {} if self.config.enable_metrics else None
-        self._executor = None
-        self._session = requests.session()
-        self._process_pre = []
-        self._process_post = []
+        
         warnings.simplefilter("always", ConfigWarning)
         warnings.simplefilter("always", TranslationWarning)
         
@@ -211,6 +207,17 @@ class TranslatorBase(abc.ABC):
         self._update_inner_config()
 
         self.validate_config()
+        
+        self._thread_local = threading.local()
+        self._cache = {} if self.config.enable_cache else None
+        self._metrics = {} if self.config.enable_metrics else None
+        self._executor = None
+        self._session = requests.session()
+        self._process_pre = []
+        self._process_post = []
+        
+        if self.config.debug_mode:
+            self.logger.setLevel(logging.DEBUG)
         
         self.logger.debug(f"{self.SERVICE_NAME} 初始化完成")
 
@@ -340,7 +347,7 @@ class TranslatorBase(abc.ABC):
         method = method or self.config.method
         translate_func = self._select_translate_method(method)
         
-        return self._process_batch_with_cache(
+        return self._process_batch_parallel(
             texts, source_lang, target_lang, translate_func, **kwargs
         )
 
@@ -424,74 +431,6 @@ class TranslatorBase(abc.ABC):
         """并行翻译"""
         self.logger.debug(f"并行翻译 {len(texts)} 个文本")
         return self._process_batch_parallel(texts, source_lang, target_lang, translate_func, **kwargs)
-
-    # ==================== 批量处理逻辑 ====================
-    
-    def _process_batch_with_cache(self, texts: List[str], source_lang: str, target_lang: str, 
-                                 translate_func: Callable, **kwargs) -> List[str]:
-        """
-        带缓存的批量处理
-        
-        Args:
-            texts: 文本列表
-            source_lang: 源语言
-            target_lang: 目标语言
-            translate_func: 翻译函数
-            **kwargs: 额外参数
-            
-        Returns:
-            翻译结果列表
-        """
-        # 缓存检查
-        cached_results = []
-        remaining_texts = []
-        remaining_indices = []
-        
-        for i, text in enumerate(texts):
-            cache_key = self._get_cache_key(text, source_lang, target_lang)
-            if self._cache and cache_key in self._cache:
-                self.logger.debug(f"缓存命中: {text[:50]}...")
-                cached_results.append((i, self._cache[cache_key]))
-            else:
-                remaining_texts.append(text)
-                remaining_indices.append(i)
-        
-        # 如果所有文本都在缓存中，则直接返回结果
-        if not remaining_texts:
-            return self._merge_batch_results(texts, cached_results, [], [])
-        
-        # 处理未缓存的内容
-        processed_results = self._process_batch_parallel(remaining_texts, source_lang, target_lang, translate_func, **kwargs)
-        
-        # 更新缓存
-        if self._cache is not None:
-            for i, result in enumerate(processed_results):
-                cache_key = self._get_cache_key(remaining_texts[i], source_lang, target_lang)
-                self._update_cache(cache_key, result)
-        
-        # 合并结果
-        return self._merge_batch_results(texts, cached_results, processed_results, remaining_indices)
-
-    def _merge_batch_results(self, original_texts: List[str], 
-                            cached_results: List[Tuple[int, str]],
-                            processed_results: List[str],
-                            processed_indices: List[int]) -> List[str]:
-        """
-        合并批量处理结果
-        """
-        # 初始化结果列表
-        results = [None] * len(original_texts)
-        
-        # 填充缓存的结果
-        for index, result in cached_results:
-            results[index] = result
-            
-        # 填充新处理的结果
-        for i, result in enumerate(processed_results):
-            original_index = processed_indices[i]
-            results[original_index] = result
-            
-        return results
 
     # ==================== 文本处理 ====================
     
@@ -645,6 +584,7 @@ class TranslatorBase(abc.ABC):
 
     def _split_by_semantic(self, text: str, **kwargs) -> List[str]:
         """语义分割（需要子类实现或使用外部库）"""
+        warnings.warn("语义分割未实现，回退到固定长度分割", FutureWarning)
         self.logger.debug("语义分割未实现，回退到固定长度分割")
         return self._split_by_fixed_length(text, **kwargs)
 
@@ -652,7 +592,19 @@ class TranslatorBase(abc.ABC):
     
     def _process_batch_parallel(self, texts: List[str], source_lang: str, target_lang: str,
                                translate_func: Callable, **kwargs) -> List[str]:
-        """并行处理批次"""
+        """
+        批量处理翻译实现
+        
+        Args:
+            texts: 文本列表
+            source_lang: 源语言
+            target_lang: 目标语言
+            translate_func: 翻译函数
+            **kwargs: 额外参数
+            
+        Returns:
+            翻译结果列表
+        """
         if not self._executor:
             self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
             
@@ -737,11 +689,6 @@ class TranslatorBase(abc.ABC):
             else:
                 self.logger.debug(f"忽略未知配置项: {key}")
 
-    def update_config(self, **kwargs):
-        """更新配置"""
-        self._update_config_from_kwargs(kwargs)
-        self.validate_config()
-
     def validate_config(self):
         """验证配置"""
         if not self.DEFAULT_API_KEY and not self.config.api_key:
@@ -817,10 +764,6 @@ class TranslatorBase(abc.ABC):
             
         if not self.validate_language(target_lang, 'target'):
             raise ValueError(f"不支持的目标语言: {target_lang}")
-
-    def get_usage(self) -> Dict[str, Any]:
-        """获取使用情况"""
-        return self._metrics or {}
 
     # ==================== 钩子方法 ====================
     
