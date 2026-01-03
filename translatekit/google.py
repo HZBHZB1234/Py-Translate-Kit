@@ -94,7 +94,7 @@ class GoogleTranslator(TranslatorBase):
         }
 
         # 发送请求
-        response = self._session.get(self.BASE_ENDPOINT, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.get(self.BASE_ENDPOINT, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         
         # 解析响应

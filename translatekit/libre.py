@@ -12,12 +12,20 @@ class LibreTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "libre_translator"
     SUPPORTED_LANGUAGES = {
-        "en": "English", "ar": "Arabic", "zh": "Chinese", "fr": "French",
-        "de": "German", "hi": "Hindi", "id": "Indonesian", "ga": "Irish",
-        "it": "Italian", "ja": "Japanese", "ko": "Korean", "pl": "Polish",
-        "pt": "Portuguese", "ru": "Russian", "es": "Spanish", "tr": "Turkish",
-        "vi": "Vietnamese","auto": "auto"
-    }
+        'en': 'English', 'sq': 'Albanian', 'ar': 'Arabic', 'az': 'Azerbaijani',
+        'eu': 'Basque', 'bn': 'Bengali', 'bg': 'Bulgarian', 'ca': 'Catalan', 
+        'zh-Hans': 'Chinese', 'zh-Hant': 'Chinese (traditional)',
+        'cs': 'Czech', 'da': 'Danish', 'nl': 'Dutch', 'eo': 'Esperanto',
+        'et': 'Estonian', 'fi': 'Finnish', 'fr': 'French', 'gl': 'Galician',
+        'de': 'German', 'el': 'Greek', 'he': 'Hebrew', 'hi': 'Hindi',
+        'hu': 'Hungarian', 'id': 'Indonesian', 'ga': 'Irish', 'it': 'Italian',
+        'ja': 'Japanese', 'ko': 'Korean', 'ky': 'Kyrgyz', 'lv': 'Latvian',
+        'lt': 'Lithuanian', 'ms': 'Malay', 'nb': 'Norwegian', 'fa': 'Persian',
+        'pl': 'Polish', 'pt': 'Portuguese', 'pt-BR': 'Portuguese (Brazil)',
+        'ro': 'Romanian', 'ru': 'Russian', 'sr': 'Serbian', 'sk': 'Slovak',
+        'sl': 'Slovenian', 'es': 'Spanish', 'sv': 'Swedish', 'tl': 'Tagalog',
+        'th': 'Thai', 'tr': 'Turkish', 'uk': 'Ukrainian', 'ur': 'Urdu',
+        'vi': 'Vietnamese'}
     
     DEFAULT_API_KEY = {
         "api_key": "",
@@ -30,7 +38,7 @@ class LibreTranslator(TranslatorBase):
             "id": "api_key",
             "name": "Libre翻译API密钥",
             "type": "string",
-            "required": False,
+            "required": True,
             "description": "Libre翻译API密钥"
         },
         {
@@ -73,11 +81,11 @@ class LibreTranslator(TranslatorBase):
             self.SUPPORTED_LANGUAGES = self.get_supported_languages()
         except Exception as e:
             warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
+
     def validate_config(self):
-        """验证配置"""
         super().validate_config()
-        if not self.use_free_api and not self.api_key:
-            raise ConfigurationError("Libre翻译实例需要API密钥")
+        if not self.api_key and not self.use_free_api:
+            raise ConfigurationError("必须提供API密钥或使用免费API")
 
     def _update_inner_config(self):
         super()._update_inner_config()
@@ -110,7 +118,7 @@ class LibreTranslator(TranslatorBase):
             params["api_key"] = self.api_key
 
         url = f"{self.BASE_ENDPOINT.rstrip('/')}/{translate_endpoint}"
-        response = self._session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.post(url, params=params, timeout=self.config.timeout)
 
         if response.status_code == 403:
             raise APIError("Libre API访问被拒绝，请检查API密钥是否正确")
@@ -135,7 +143,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self._session.get(url, params=params, timeout=self.config.timeout)
             response.raise_for_status()
             languages_data = response.json()
 
@@ -143,7 +151,7 @@ class LibreTranslator(TranslatorBase):
             languages = {}
             for item in languages_data:
                 if "name" in item and "code" in item:
-                    languages[item["name"]] = item["code"]
+                    languages[item["code"]] = item["name"]
             return languages
         except Exception as e:
             self.logger.warning(f"无法从API获取语言列表，使用默认列表: {e}")
@@ -167,7 +175,7 @@ class LibreTranslator(TranslatorBase):
         if self.api_key:
             params["api_key"] = self.api_key
 
-        response = self._session.post(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.post(url, params=params, timeout=self.config.timeout)
         response.raise_for_status()
         return response.json()
 
@@ -182,7 +190,7 @@ class LibreTranslator(TranslatorBase):
             if self.api_key:
                 params["api_key"] = self.api_key
 
-            response = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            response = self._session.get(url, params=params, timeout=self.config.timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:

@@ -3,6 +3,7 @@ prompt.md
 dev
 test.py
 test*.py
+!test_argu.py
 test_assets/
 *.docx
 *.pdf

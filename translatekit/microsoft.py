@@ -93,7 +93,7 @@ class MicrosoftTranslator(TranslatorBase):
         super().__init__(config, **kwargs)
 
         try:
-            self.SUPPORTED_LANGUAGES = self.get_supported_languages()
+            self.SUPPORTED_LANGUAGES = self._net_get_supported_languages()
         except Exception as e:
             warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
 
@@ -113,7 +113,7 @@ class MicrosoftTranslator(TranslatorBase):
         if self.profanity_action not in ['NoAction', 'Marked', 'Deleted']:
             warnings.warn("脏话处理方式必须是 'NoAction', 'Marked' 或 'Deleted' 中的一个", ConfigWarning)
 
-    def _get_supported_languages(self) -> Dict[str, str]:
+    def _net_get_supported_languages(self) -> Dict[str, str]:
         """从Microsoft API获取支持的语言列表"""
         try:
             languages_url = f"https://api.cognitive.microsofttranslator.com/languages?api-version=3.0&scope=translation"
@@ -129,19 +129,40 @@ class MicrosoftTranslator(TranslatorBase):
         except Exception as e:
             self.logger.warning(f"无法获取Microsoft支持的语言列表，使用默认列表: {e}")
             # 返回一个默认的常见语言列表
-            return {
-                "af": "afrikaans", "ar": "arabic", "bg": "bulgarian", "ca": "catalan",
-                "zh-hans": "chinese (simplified)", "zh-hant": "chinese (traditional)",
-                "cs": "czech", "da": "danish", "nl": "dutch", "en": "english", "et": "estonian",        
-                "fi": "finnish", "fr": "french", "de": "german", "el": "greek",
-                "ht": "haitian creole", "he": "hebrew", "hi": "hindi", "hu": "hungarian",
-                "is": "icelandic", "id": "indonesian", "it": "italian", "ja": "japanese",
-                "ko": "korean", "lv": "latvian", "lt": "lithuanian", "nb": "norwegian",
-                "pl": "polish", "pt": "portuguese", "ro": "romanian", "ru": "russian",
-                "sk": "slovak", "sl": "slovenian", "es": "spanish", "sv": "swedish", "th": "thai",      
-                "tr": "turkish", "uk": "ukrainian", "vi": "vietnamese",
-                "auto": "auto"
-            }
+            return {'af': 'afrikaans', 'am': 'አማርኛ', 'ar': 'العربية', 'as': 'অসমীয়া',
+                    'az': 'azərbaycan', 'ba': 'bashkir', 'be': 'беларуская', 'bg': 'български',
+                    'bho': 'भोजपुरी', 'bn': 'বাংলা', 'bo': 'བོད་སྐད་', 'brx': 'बड़ो', 'bs': 'bosanski',
+                    'ca': 'català', 'cs': 'čeština', 'cy': 'cymraeg', 'da': 'dansk', 'de': 'deutsch',
+                    'doi': 'डोगरी', 'dsb': 'dolnoserbšćina', 'dv': 'ދިވެހިބަސް', 'el': 'ελληνικά',
+                    'en': 'english', 'es': 'español', 'et': 'eesti', 'eu': 'euskara', 'fa': 'فارسی',
+                    'fi': 'suomi', 'fil': 'filipino', 'fj': 'na vosa vakaviti', 'fo': 'føroyskt',
+                    'fr': 'français', 'fr-ca': 'français (canada)', 'ga': 'gaeilge', 'gl': 'galego',
+                    'gom': 'कोंकणी', 'gu': 'ગુજરાતી', 'ha': 'hausa', 'he': 'עברית', 'hi': 'हिन्दी',
+                    'hne': 'छत्तीसगढ़ी', 'hr': 'hrvatski', 'hsb': 'hornjoserbšćina', 'ht': 'haitian creole',
+                    'hu': 'magyar', 'hy': 'հայերեն', 'id': 'indonesia', 'ig': 'ásụ̀sụ́ ìgbò',
+                    'ikt': 'inuinnaqtun', 'is': 'íslenska', 'it': 'italiano', 'iu': 'ᐃᓄᒃᑎᑐᑦ',
+                    'iu-latn': 'inuktitut (latin)', 'ja': '日本語', 'ka': 'ქართული',
+                    'kk': 'қазақ тілі', 'km': 'ខ្មែរ', 'kmr': 'kurdî (bakur)', 'kn': 'ಕನ್ನಡ',
+                    'ko': '한국어', 'ks': 'کٲشُر', 'ku': 'kurdî (navîn)', 'ky': 'кыргызча',
+                    'lb': 'lëtzebuergesch', 'ln': 'lingála', 'lo': 'ລາວ', 'lt': 'lietuvių',
+                    'lug': 'ganda', 'lv': 'latviešu', 'lzh': '中文 (文言文)', 'mai': 'मैथिली',
+                    'mg': 'malagasy', 'mi': 'te reo māori', 'mk': 'македонски', 'ml': 'മലയാളം',
+                    'mn-cyrl': 'монгол', 'mn-mong': 'ᠮᠣᠩᠭᠣᠯ ᠬᠡᠯᠡ', 'mni': 'ꯃꯩꯇꯩꯂꯣꯟ', 'mr': 'मराठी',
+                    'ms': 'melayu', 'mt': 'malti', 'mww': 'hmong daw', 'my': 'မြန်မာ',
+                    'nb': 'norsk bokmål', 'ne': 'नेपाली', 'nl': 'nederlands',
+                    'nso': 'sesotho sa leboa', 'nya': 'nyanja', 'or': 'ଓଡ଼ିଆ', 'otq': 'hñähñu',
+                    'pa': 'ਪੰਜਾਬੀ', 'pl': 'polski', 'prs': 'دری', 'ps': 'پښتو', 'pt': 'português (brasil)',
+                    'pt-pt': 'português (portugal)', 'ro': 'română', 'ru': 'русский', 'run': 'rundi',
+                    'rw': 'kinyarwanda', 'sd': 'سنڌي', 'si': 'සිංහල', 'sk': 'slovenčina',
+                    'sl': 'slovenščina', 'sm': 'gagana sāmoa', 'sn': 'chishona', 'so': 'soomaali',
+                    'sq': 'shqip', 'sr-cyrl': 'српски (ћирилица)', 'sr-latn': 'srpski (latinica)',
+                    'st': 'sesotho', 'sv': 'svenska', 'sw': 'kiswahili', 'ta': 'தமிழ்', 'te': 'తెలుగు',
+                    'th': 'ไทย', 'ti': 'ትግር', 'tk': 'türkmen dili', 'tlh-latn': 'klingon (latin)',
+                    'tlh-piqd': 'klingon (piqad)', 'tn': 'setswana', 'to': 'lea fakatonga',
+                    'tr': 'türkçe', 'tt': 'татар', 'ty': 'reo tahiti', 'ug': 'ئۇيغۇرچە',
+                    'uk': 'українська', 'ur': 'اردو', 'uz': 'o‘zbek', 'vi': 'tiếng việt',
+                    'xh': 'isixhosa', 'yo': 'èdè yorùbá', 'yua': 'yucatec maya', 'yue': '粵語 (繁體)',
+                    'zh-hans': '中文 (简体)', 'zh-hant': '繁體中文 (繁體)', 'zu': 'isi-zulu'}
 
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
         """

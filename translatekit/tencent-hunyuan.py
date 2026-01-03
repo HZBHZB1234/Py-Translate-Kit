@@ -260,8 +260,8 @@ class TencentHunyuanTranslator(TranslatorBase):
         Returns:
             包含签名的请求头
         """
-        secret_id = self.config.api_key.get('secret_id', '')
-        secret_key = self.config.api_key.get('secret_key', '')
+        secret_id = self.secret_id
+        secret_key = self.secret_key
         
         if not secret_id or not secret_key:
             raise ConfigurationError("腾讯云SecretId和SecretKey未配置")

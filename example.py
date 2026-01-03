@@ -28,7 +28,7 @@ config = tkit.TranslationConfig(
 translator = tkit.BaiduTranslator(
     config=config,
     # 也可以通过kwargs的方式传入并修改参数
-    # 先判断并修改config中的参数，没有的话再修改config.api_key中的参数
+    # 先判断并修改config中的参数，没有的话再修改config.api_setting中的参数
     source_lang="zh",
     target_lang="en",
     appid = "your_app_id"

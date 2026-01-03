@@ -23,7 +23,7 @@ class PonsTranslator(TranslatorBase):
     }
     
     # Pons翻译API端点
-    BASE_ENDPOINT = "https://en.pons.com/translate/"
+    BASE_ENDPOINT = "https://en.pons.com/text-translation/"
     
     METADATA = Metadata(
         console_url="https://en.pons.com/",
@@ -41,6 +41,7 @@ class PonsTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数
         """
+        raise APIError("Pons API已失效")
         super().__init__(config, **kwargs)
 
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Dict[str, Any]:
@@ -54,10 +55,10 @@ class PonsTranslator(TranslatorBase):
             **kwargs: 额外参数
         """
         # 构建URL
-        url = f"{self.BASE_ENDPOINT}{source_lang}-{target_lang}/{text}"
+        url = f"{self.BASE_ENDPOINT}{source_lang}-{target_lang}?q={text}"
         url = requote_uri(url)
         
-        response = self._session.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.get(url, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Pons API请求频率超限，请稍后重试")
@@ -130,7 +131,7 @@ class PonsTranslator(TranslatorBase):
         url = f"{self.BASE_ENDPOINT}{self.config.source_lang}-{self.config.target_lang}/{word}"
         url = requote_uri(url)
         
-        response = self._session.get(url, proxies=self.proxies, timeout=self.config.timeout)
+        response = self._session.get(url, timeout=self.config.timeout)
 
         if response.status_code == 429:
             raise APIError("Pons API请求频率超限，请稍后重试")

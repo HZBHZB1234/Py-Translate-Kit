@@ -65,7 +65,9 @@ class QcriTranslator(TranslatorBase):
         super().__init__(config, **kwargs)
         
         try:
-            self.SUPPORTED_LANGUAGES = self.get_supported_languages()
+            _ = self.get_supported_languages()
+            if not _:
+                raise APIError("获取支持的语言列表失败")
         except Exception as e:
             warnings.warn(f"获取支持的语言列表失败，使用默认列表: {e}", TranslationWarning)
 
@@ -75,7 +77,7 @@ class QcriTranslator(TranslatorBase):
             params = {"key": self.api_key}
         try:
             url = self.BASE_ENDPOINT + self.api_endpoints[endpoint]
-            res = self._session.get(url, params=params, proxies=self.proxies, timeout=self.config.timeout)
+            res = self._session.get(url, params=params, timeout=self.config.timeout)
             return res.text if return_text else res
         except Exception as e:
             raise APIError(f"Qcri API请求错误: {e}")
@@ -89,7 +91,7 @@ class QcriTranslator(TranslatorBase):
             source_lang: 源语言
             target_lang: 目标语言
         """
-        domain = self.config.api_key.get('domain', 'general')  # 默认为通用领域
+        domain = self.config.api_setting.get('domain', 'general')  # 默认为通用领域
 
         params = {
             "key": self.api_key,

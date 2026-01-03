@@ -11,11 +11,13 @@ import time
 import threading
 import requests
 import warnings
+import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Union, Callable, Any, Tuple
 from functools import wraps
 from dataclasses import dataclass
 from enum import Enum
+from copy import deepcopy
 
 class ConfigWarning(RuntimeWarning):
     """配置警告"""
@@ -60,7 +62,7 @@ class TranslationConfig:
     """翻译配置数据类"""
     
     # API配置
-    api_key: Dict[str, str] = None
+    api_setting: Dict[str, str] = None
     
     # 翻译参数
     source_lang: str = "auto"
@@ -89,11 +91,16 @@ class TranslationConfig:
     cache_size: Optional[int] = None
     enable_metrics: bool = False
     debug_mode: bool = False
+    
+    # 安全设置
+    ignore_ssl_errors: bool = False
+    
+    # 链接设置
+    proxies: str = None
 
     def __post_init__(self):
-        if self.api_key is None:
-            self.api_key = {}
-
+        if self.api_setting is None:
+            self.api_setting = {}
 
 @dataclass
 class Metadata:
@@ -193,28 +200,32 @@ class TranslatorBase(abc.ABC):
             config: 翻译配置对象
             **kwargs: 支持直接传入配置参数
         """
-        self.config = config or self.DEFAULT_CONFIG
+        self.config = deepcopy(config or self.DEFAULT_CONFIG)
         
         # 初始化组件
         self.logger = self._setup_logger()
+        self._thread_local = threading.local()
+        self._executor = None
+        self._session = requests.session()
+        self._process_pre = []
+        self._process_post = []
+        self._config_checked = False
         
         warnings.simplefilter("always", ConfigWarning)
         warnings.simplefilter("always", TranslationWarning)
+        
+        if self.DEFAULT_API_KEY:
+            self.config.api_setting = self.DEFAULT_API_KEY
+            if hasattr(config, "api_setting") and config.api_setting:
+                self.config.api_setting.update(config.api_setting)
         
         if kwargs:
             self._update_config_from_kwargs(kwargs)
         
         self._update_inner_config()
-
-        self.validate_config()
         
-        self._thread_local = threading.local()
         self._cache = {} if self.config.enable_cache else None
         self._metrics = {} if self.config.enable_metrics else None
-        self._executor = None
-        self._session = requests.session()
-        self._process_pre = []
-        self._process_post = []
         
         if self.config.debug_mode:
             self.logger.setLevel(logging.DEBUG)
@@ -304,10 +315,14 @@ class TranslatorBase(abc.ABC):
         target_lang = target_lang or self.config.target_lang
         
         self._validate_languages(source_lang, target_lang)
-        
+             
+        if not self._config_checked:
+            self.validate_config()
+            self._config_checked = True
+            
         if config or kwargs:
             _temp_old_config = self.config
-            self.update_config(config, **kwargs)          
+            self.update_config(config, **kwargs)  
         
         # 根据输入类型选择处理方式
         if isinstance(text, str):
@@ -516,14 +531,23 @@ class TranslatorBase(abc.ABC):
         pass
 
     def _update_inner_config(self):
-        """将self.config的内容更新至类中"""
+        """将self.config.api_setting的内容更新至类中"""
+        if self.config.ignore_ssl_errors:
+            self._session.verify = False
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        else:
+            self._session.verify = True
+        
+        if self.config.proxies:
+            self._session.proxies = self.config.proxies
+            
         if self.DESCRIBE_API_KEY:
-            for targetKeyName in self.config.api_key:
+            for targetKeyName in self.config.api_setting:
                 if not targetKeyName in self.DEFAULT_API_KEY:
                     warnings.warn(f"未知API KEY: {targetKeyName}", ConfigWarning)
                     continue
                 DescribeAPI = [d for d in self.DESCRIBE_API_KEY if d['id'] == targetKeyName][0]
-                setattr(self, targetKeyName, self.config.api_key.get(targetKeyName))
+                setattr(self, targetKeyName, self.config.api_setting.get(targetKeyName))
                 self.logger.debug(f"设置{DescribeAPI['name']} 内容: {getattr(self, targetKeyName)}")
 
     def get_special_api_reference(self) -> Dict[str, Any]:
@@ -685,22 +709,19 @@ class TranslatorBase(abc.ABC):
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
             elif key in self.DEFAULT_API_KEY:
-                self.config.api_key[key] = value
+                self.config.api_setting[key] = value
             else:
                 self.logger.debug(f"忽略未知配置项: {key}")
 
     def validate_config(self):
         """验证配置"""
-        if not self.DEFAULT_API_KEY and not self.config.api_key:
-            raise ConfigurationError("API密钥未配置")
-            
         if not self.config.target_lang:
             raise ConfigurationError("目标语言未配置")
         
         if self.DESCRIBE_API_KEY:
             for DescribeAPI in self.DESCRIBE_API_KEY:
+                targetKeyName = DescribeAPI.get('id')
                 if DescribeAPI.get('required', False):
-                    targetKeyName = DescribeAPI.get('id')
                     if not hasattr(self, targetKeyName) or not getattr(self, targetKeyName):
                         raise ConfigurationError(f'配置项{targetKeyName}不存在或未配置')
                     
@@ -748,12 +769,13 @@ class TranslatorBase(abc.ABC):
         """获取支持的语言列表"""
         return self.SUPPORTED_LANGUAGES.copy()
 
+    def _get_supported_languages(self) -> Dict[str, str]:
+        """获取支持的语言列表"""
+        return self.SUPPORTED_LANGUAGES
+
     def validate_language(self, lang_code: str, lang_type: str = 'target') -> bool:
         """验证语言代码"""
-        supported = self.get_supported_languages()
-        
-        if lang_code == 'auto' and lang_type == 'source':
-            return True
+        supported = self._get_supported_languages()
             
         return lang_code in supported
 

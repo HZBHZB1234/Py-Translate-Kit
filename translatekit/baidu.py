@@ -110,7 +110,7 @@ class BaiduTranslator(TranslatorBase):
         
         # 构建请求参数
         params = {
-            'appid': self.config.api_key.get('appid', ''),
+            'appid': self.appid,
             'q': text,
             'from': source_lang,
             'to': target_lang,
@@ -134,7 +134,7 @@ class BaiduTranslator(TranslatorBase):
         
         # 构建请求参数
         params = {
-            'appid': self.config.api_key.get('appid', ''),
+            'appid': self.appid,
             'q': text,
             'from': source_lang,
             'to': target_lang,
@@ -162,7 +162,7 @@ class BaiduTranslator(TranslatorBase):
         
         # 构建请求参数
         params = {
-            'appid': self.config.api_key.get('appid', ''),
+            'appid': self.appid,
             'q': text,
             'from': source_lang,
             'to': target_lang,
@@ -195,7 +195,7 @@ class BaiduTranslator(TranslatorBase):
         
         # 构建请求参数
         params = {
-            'appid': self.config.api_key.get('appid', ''),
+            'appid': self.appid,
             'q': text,
             'salt': salt,
             'sign': sign
@@ -389,13 +389,13 @@ class BaiduTranslator(TranslatorBase):
     
     def _generate_general_sign(self, text: str, salt: int) -> str:
         """生成通用翻译API的签名"""
-        appid = self.config.api_key.get('appid', '')
+        appid = self.appid
         sign_str = f"{appid}{text}{salt}{self.appkey}"
         return hashlib.md5(sign_str.encode('utf-8')).hexdigest()
     
     def _generate_doc_sign(self, timestamp: int, input_data: Dict[str, Any]) -> str:
         """生成文档翻译API的签名"""
-        appid = self.config.api_key.get('appid', '')
+        appid = self.appid
         query_str = json.dumps(input_data)
         sign_str = f"{appid}{timestamp}{query_str}"
         sign = base64.b64encode(
@@ -411,7 +411,7 @@ class BaiduTranslator(TranslatorBase):
         """创建文档翻译API的请求头"""
         return {
             'Content-Type': 'application/json',
-            'X-Appid': self.config.api_key.get('appid', ''),
+            'X-Appid': self.appid,
             'X-Sign': sign,
             'X-Timestamp': str(timestamp),
         }

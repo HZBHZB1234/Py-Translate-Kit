@@ -206,7 +206,6 @@ class YandexTranslator(TranslatorBase):
             url,
             headers=self._get_headers(),
             json=body,
-            proxies=self.proxies,
             timeout=self.config.timeout
         )
         
