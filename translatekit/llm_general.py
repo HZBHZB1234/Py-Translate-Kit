@@ -116,10 +116,50 @@ class LLMGeneralTranslator(TranslatorBase):
         }
     ]
     
-    INER_MODAL = {
+    INNER_API = {
         "deepseek": {
-            "base_url": "https://api.deepseek.com",
-            "modal": "deepseek-chat"
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat"
+        },
+        "openai": {
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-3.5-turbo"
+        },
+        "zhipu": {
+            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "model": "glm-4"
+        },
+        "xunfei": {
+            "base_url": "https://spark-api.xf-yun.com/v1",
+            "model": "spark-pro"
+        },
+        "baidu": {
+            "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat",
+            "model": "ernie-4.0"
+        },
+        "ali": {
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen-plus"
+        },
+        "bytedance": {
+            "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "model": "doubao-pro"
+        },
+        "anthropic": {
+            "base_url": "https://api.anthropic.com/v1",
+            "model": "claude-3-opus-20240229"
+        },
+        "google": {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta",
+            "model": "gemini-pro"
+        },
+        "moonshot": {
+            "base_url": "https://api.moonshot.cn/v1",
+            "model": "moonshot-v1-8k"
+        },
+        "zhiyuan": {
+            "base_url": "https://api.baai.ac.cn/v1",
+            "model": "wudao-2.0"
         }
     }
     
