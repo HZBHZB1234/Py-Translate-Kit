@@ -41,7 +41,7 @@ import translatekit as tkit
 
 # 创建翻译器配置
 config = tkit.TranslationConfig(
-    api_key={"appkey": "your_app_key"},
+    api_setting={"appkey": "your_app_key"},
     debug_mode=True,
     enable_cache=True,
     cache_size=1000
@@ -60,7 +60,7 @@ result = translator.translate(text)
 print(result)  # 输出: Hello, World!
 ```
 
-查看 [example.py](example.py) 获取更详细的使用示例。
+查看 [example.py](docs/example.py) 获取更详细的使用示例。
 
 ## 🌍 支持的翻译服务
 
@@ -84,11 +84,11 @@ print(result)  # 输出: Hello, World!
 
 ## ⚙️ 配置选项
 
-Py-Translate-Kit 提供了丰富的配置选项，详情请参阅 [TRANSLATION_CONFIG.md](TRANSLATION_CONFIG.md)。
+Py-Translate-Kit 提供了丰富的配置选项，详情请参阅 [TRANSLATION_CONFIG.md](docs/TRANSLATION_CONFIG.md)。
 
 ## 🧩 工具箱
 
-Py-Translate-Kit 提供了一些工具箱函数，帮助开发者处理翻译相关的任务。详情请参阅 [kit.md](kit.md)。
+Py-Translate-Kit 提供了一些工具箱函数，帮助开发者处理翻译相关的任务。详情请参阅 [kit.md](docs/kit.md)。
 
 ## 🛠️ 高级功能
 
