@@ -25,14 +25,15 @@ class LLMGeneralTranslator(TranslatorBase):
     DEFAULT_API_KEY = {
         "api_key": "",
         "base_url": "https://api.openai.com/v1",
-        "model": "gpt-3.5-turbo",
+        "model_name": "gpt-3.5-turbo",
         "temperature": 0.0,
         "max_tokens": 4000,
         "top_p": 1.0,
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0,
         "system_prompt": "你是一个专业的翻译助手，严格按照要求完成翻译任务，只返回翻译结果，不添加任何额外解释、说明或格式。",
-        "user_prompt_base": "{0}"
+        "user_prompt_base": "{0}",
+        "response_format": "text"
     }
 
     DESCRIBE_API_KEY = [
@@ -51,7 +52,7 @@ class LLMGeneralTranslator(TranslatorBase):
             "description": "自定义API基础URL（支持OpenAI兼容接口，如https://api.openai.com/v1、https://open.bigmodel.cn/api/paas/v4等）"
         },
         {
-            "id": "model",
+            "id": "model_name",
             "name": "模型名称",
             "type": "string",
             "required": False,
@@ -105,8 +106,22 @@ class LLMGeneralTranslator(TranslatorBase):
             "type": "string",
             "required": False,
             "description": "用户自定义提示词，用于生成翻译结果"
+        },
+        {
+            "id": "response_format",
+            "name": "响应格式",
+            "type": "string",
+            "required": False,
+            "description": "响应格式定义，可选json_object，text"
         }
     ]
+    
+    INER_MODAL = {
+        "deepseek": {
+            "base_url": "https://api.deepseek.com",
+            "modal": "deepseek-chat"
+        }
+    }
     
     # API端点（拼接base_url使用）
     CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
@@ -151,6 +166,21 @@ class LLMGeneralTranslator(TranslatorBase):
         self.complete_api_url = f"{self.base_url.rstrip('/')}{self.CHAT_COMPLETIONS_ENDPOINT}"
         
         self.logger.debug(f"LLM翻译器初始化完成，API地址: {self.complete_api_url}，模型: {self.model}")
+
+    def _update_config_from_kwargs(self, kwargs: Dict):
+        """更新配置参数"""
+        if "model" in kwargs:
+            model = kwargs.pop("model")
+            if model in self.INER_MODAL:
+                modal_description = self.INER_MODAL[model]
+                self.base_url = modal_description["base_url"]
+                self.model_name = modal_description["model"]
+                self.config.api_setting["base_url"] = self.base_url
+                self.config.api_setting["model_name"] = self.model_name
+            else:
+                self.logger.debug(f"未知内置模型: {model}，已忽略")
+                
+        super()._update_config_from_kwargs(kwargs)
 
     def validate_config(self):
         """验证配置合法性"""
@@ -198,6 +228,7 @@ class LLMGeneralTranslator(TranslatorBase):
             "top_p": self.top_p,
             "frequency_penalty": self.frequency_penalty,
             "presence_penalty": self.presence_penalty,
+            "response_format": {"type": self.response_format},
             "messages": self._build_translation_prompt(text)
         }
         
@@ -256,3 +287,7 @@ class LLMGeneralTranslator(TranslatorBase):
             raise APIError(f"解析响应失败：缺少字段 {e}") from e
         except Exception as e:
             raise APIError(f"解析响应失败：{str(e)}") from e
+
+    def get_inner_modal(self, modal_name: str) -> Dict[str,str]:
+        """获取内置模型"""
+        return self.INER_MODAL[modal_name]
