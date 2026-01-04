@@ -18,7 +18,7 @@ print(tkit.TranslationConfig)
 
 # 可以使用TranslationConfig类来配置翻译器参数
 config = tkit.TranslationConfig(
-    api_key={"appkey": "your_app_key"},
+    api_setting={"appkey": "your_app_key"},
     debug_mode=True,
     enable_cache=True,
     cache_size=1000
@@ -123,7 +123,7 @@ print(result)
 class TranslationConfig:
     # API配置
     # 本文开头已经介绍了API配置的过程，这里不再赘述
-    api_key: Dict[str, str] = None
+    api_setting: Dict[str, str] = None
     
     # 目标语言和源语言
     source_lang: str = "auto"
@@ -163,3 +163,20 @@ class TranslationConfig:
     # 调试模式(设置logget等级为DEBUG)
     debug_mode: bool = False
 """
+
+# llm_general翻译器的传参比较特殊
+
+config = tkit.TranslationConfig(
+    api_setting={"api_key": "your_api_key",
+                 "base_url": "https://api.openai.com/v1",
+                 "user_prompt_base": "第一句话:{0}，第二句话:{1}，第三句话:{2}"},
+    debug_mode=True,
+    enable_cache=True,
+    cache_size=1000
+)
+
+translator = tkit.LLMGeneralTranslator(
+    config=config
+)
+
+translator.translate(["你好，世界！", "晚安", "再见"])

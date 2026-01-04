@@ -4,7 +4,7 @@
 """
 
 import warnings
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from .base import (
     TranslatorBase, TranslationConfig, APIError, 
     TranslationWarning, ConfigurationError, ConfigWarning, Metadata
@@ -15,7 +15,9 @@ class LLMGeneralTranslator(TranslatorBase):
     
     # 服务元信息
     SERVICE_NAME = "llmGeneral_translator"
-    SUPPORTED_LANGUAGES = {}  # 初始化时加载预设语言列表
+    SUPPORTED_LANGUAGES = {
+        'auto': 'auto'
+    }
 
     DEFAULT_CONFIG = TranslationConfig()
 
@@ -96,6 +98,13 @@ class LLMGeneralTranslator(TranslatorBase):
             "type": "string",
             "required": False,
             "description": "翻译助手的系统角色定义（控制翻译行为）"
+        },
+        {
+            "id": "user_prompt_base",
+            "name": "用户提示词",
+            "type": "string",
+            "required": False,
+            "description": "用户自定义提示词，用于生成翻译结果"
         }
     ]
     
@@ -132,9 +141,6 @@ class LLMGeneralTranslator(TranslatorBase):
 
         super().__init__(config, **kwargs)
         
-        # 加载预设支持的语言列表（LLM支持的主流语言）
-        self.SUPPORTED_LANGUAGES = self._get_supported_languages()
-        
         # 初始化请求头
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -150,11 +156,6 @@ class LLMGeneralTranslator(TranslatorBase):
         """验证配置合法性"""
         super().validate_config()
         
-        # 基础校验
-        if not self.api_key:
-            raise ConfigurationError("API密钥(api_key)未配置，无法调用大模型API")
-        
-        # 数值范围校验
         if not (0.0 <= self.temperature <= 2.0):
             warnings.warn("temperature应在0.0-2.0之间，已自动修正为0.0", ConfigWarning)
             self.temperature = 0.0
@@ -167,53 +168,9 @@ class LLMGeneralTranslator(TranslatorBase):
         if not self.base_url.startswith(('http://', 'https://')):
             raise ConfigurationError(f"base_url格式错误: {self.base_url}，必须以http://或https://开头")
 
-    def _get_supported_languages(self) -> Dict[str, str]:
-        """获取LLM支持的语言列表（预设主流语言）"""
-        return {
-            'auto': 'auto',
-            'zh': '中文',
-            'zh-hans': '中文(简体)',
-            'zh-hant': '中文(繁体)',
-            'en': '英语',
-            'ja': '日语',
-            'ko': '韩语',
-            'fr': '法语',
-            'de': '德语',
-            'ru': '俄语',
-            'es': '西班牙语',
-            'pt': '葡萄牙语',
-            'it': '意大利语',
-            'ar': '阿拉伯语',
-            'tr': '土耳其语',
-            'vi': '越南语',
-            'th': '泰语',
-            'hi': '印地语'
-        }
-
-    def _build_translation_prompt(self, text: str, source_lang: str, target_lang: str) -> List[Dict[str, str]]:
+    def _build_translation_prompt(self, own: Union[str, List[str]]) -> List[Dict[str, str]]:
         """构建翻译请求的Prompt（适配Chat Completions格式）"""
-        # 语言名称映射（提升Prompt可读性）
-        lang_mapping = {
-            'auto': '自动识别的语言',
-            'zh': '中文',
-            'zh-hans': '中文(简体)',
-            'zh-hant': '中文(繁体)',
-            'en': '英语',
-            'ja': '日语',
-            'ko': '韩语',
-            'fr': '法语',
-            'de': '德语',
-            'ru': '俄语',
-            'es': '西班牙语'
-        }
-        
-        src_lang_name = lang_mapping.get(source_lang, source_lang)
-        tgt_lang_name = lang_mapping.get(target_lang, target_lang)
-        
-        # 用户指令
-        user_prompt = f"""将以下文本从{src_lang_name}翻译到{tgt_lang_name}：
-
-{text}"""
+        user_prompt = self.user_prompt_base.format(tuple(own))
         
         # 构建messages（兼容OpenAI Chat API格式）
         messages = [
@@ -241,7 +198,7 @@ class LLMGeneralTranslator(TranslatorBase):
             "top_p": self.top_p,
             "frequency_penalty": self.frequency_penalty,
             "presence_penalty": self.presence_penalty,
-            "messages": self._build_translation_prompt(text, source_lang, target_lang)
+            "messages": self._build_translation_prompt(text)
         }
         
         self.logger.debug(f"发送翻译请求到 {self.complete_api_url}，模型: {request_data['model']}")
@@ -299,44 +256,3 @@ class LLMGeneralTranslator(TranslatorBase):
             raise APIError(f"解析响应失败：缺少字段 {e}") from e
         except Exception as e:
             raise APIError(f"解析响应失败：{str(e)}") from e
-
-    def get_special_api_reference(self) -> Dict[str, Any]:
-        """获取特殊API方法的引用规范"""
-        return {
-            "set_model": {
-                "description": "动态设置翻译使用的模型",
-                "parameters": {
-                    "model_name": "模型名称（如gpt-3.5-turbo、glm-4、deepseek-chat等）"
-                },
-                "return_type": "None",
-                "example": "translator.set_model('gpt-4')"
-            },
-            "set_temperature": {
-                "description": "设置生成温度（翻译建议0.0）",
-                "parameters": {
-                    "temperature": "温度值（0.0-2.0）"
-                },
-                "return_type": "None",
-                "example": "translator.set_temperature(0.1)"
-            }
-        }
-
-    # 便捷方法：动态调整模型参数
-    def set_model(self, model_name: str):
-        """设置翻译使用的模型"""
-        if not model_name:
-            raise ValueError("模型名称不能为空")
-        self.model = model_name
-        self.logger.debug(f"已切换模型为: {model_name}")
-
-    def set_temperature(self, temperature: float):
-        """设置生成温度"""
-        if not (0.0 <= temperature <= 2.0):
-            raise ValueError("temperature必须在0.0-2.0之间")
-        self.temperature = temperature
-        self.logger.debug(f"已设置temperature为: {temperature}")
-
-    def set_system_prompt(self, prompt: str):
-        """自定义系统提示词"""
-        self.system_prompt = prompt
-        self.logger.debug("已更新系统提示词")

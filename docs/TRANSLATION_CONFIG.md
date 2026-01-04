@@ -6,7 +6,7 @@
 
 ### 1. API配置
 
-- **api_key**: `Dict[str, str] = None`
+- **api_setting**: `Dict[str, str] = None`
   - 用于存储API密钥的字典，不同翻译服务需要不同的密钥格式
   - 默认为None，若未提供则初始化为空字典
   - 使用示例：`{"appkey": "your_app_key", "secret": "your_secret"}`
@@ -100,7 +100,7 @@ import translatekit as tkit
 
 # 创建带自定义配置的翻译器
 config = tkit.TranslationConfig(
-    api_key={"appkey": "your_app_key"},
+    api_setting={"appkey": "your_app_key"},
     debug_mode=True,
     enable_cache=True,
     cache_size=1000,

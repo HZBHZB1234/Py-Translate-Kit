@@ -197,7 +197,7 @@ import json
 import jsonpatch
 # 配置翻译参数
 config = TranslationConfig(
-    api_key={"appid":"filted","appkey":"secret"},
+    api_setting={"appid":"filted","appkey":"secret"},
     target_lang="zh",  # 目标语言
     debug_mode=True,
     enable_cache=True,

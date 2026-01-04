@@ -18,6 +18,7 @@ from .pons import PonsTranslator
 from .qcri import QcriTranslator
 from .tencent import TencentTranslator
 from .youdao import YoudaoTranslator
+from .llm_general import LLMGeneralTranslator
 from . import kit
 
 __all__ = [
@@ -39,8 +40,9 @@ __all__ = [
     'QcriTranslator',
     'TencentTranslator',
     'YoudaoTranslator',
+    'LLMGeneralTranslator',
     'kit'
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.0.3"
 __author__ = "HZBHZB1234"
