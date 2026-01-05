@@ -16,7 +16,8 @@ class LLMGeneralTranslator(TranslatorBase):
     # 服务元信息
     SERVICE_NAME = "llmGeneral_translator"
     SUPPORTED_LANGUAGES = {
-        'auto': 'auto'
+        'auto': 'auto',
+        'en': 'en'
     }
 
     DEFAULT_CONFIG = TranslationConfig()
@@ -99,13 +100,6 @@ class LLMGeneralTranslator(TranslatorBase):
             "type": "string",
             "required": False,
             "description": "翻译助手的系统角色定义（控制翻译行为）"
-        },
-        {
-            "id": "user_prompt_base",
-            "name": "用户提示词",
-            "type": "string",
-            "required": False,
-            "description": "用户自定义提示词，用于生成翻译结果"
         },
         {
             "id": "response_format",
@@ -211,8 +205,8 @@ class LLMGeneralTranslator(TranslatorBase):
         """更新配置参数"""
         if "model" in kwargs:
             model = kwargs.pop("model")
-            if model in self.INER_MODAL:
-                modal_description = self.INER_MODAL[model]
+            if model in self.INNER_API:
+                modal_description = self.INNER_API[model]
                 self.base_url = modal_description["base_url"]
                 self.model_name = modal_description["model"]
                 self.config.api_setting["base_url"] = self.base_url
@@ -238,9 +232,9 @@ class LLMGeneralTranslator(TranslatorBase):
         if not self.base_url.startswith(('http://', 'https://')):
             raise ConfigurationError(f"base_url格式错误: {self.base_url}，必须以http://或https://开头")
 
-    def _build_translation_prompt(self, own: Union[str, List[str]]) -> List[Dict[str, str]]:
+    def _build_translation_prompt(self, text) -> List[Dict[str, str]]:
         """构建翻译请求的Prompt（适配Chat Completions格式）"""
-        user_prompt = self.user_prompt_base.format(tuple(own))
+        user_prompt = text
         
         # 构建messages（兼容OpenAI Chat API格式）
         messages = [
@@ -330,4 +324,4 @@ class LLMGeneralTranslator(TranslatorBase):
 
     def get_inner_modal(self, modal_name: str) -> Dict[str,str]:
         """获取内置模型"""
-        return self.INER_MODAL[modal_name]
+        return self.INNER_API[modal_name]

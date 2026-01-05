@@ -186,12 +186,14 @@ def apply_filtered_patchs(original_jsonpatchs : List[dict],
 
 class ProperNounMatcher:
     """
-    专有名词匹配器
+    专有名词匹配器（简化版）
     
     支持三种匹配模式：
     1. unordered: 无论顺序匹配（专有名词中的所有单词都出现，不考虑顺序）
     2. sequential: 顺序匹配（专有名词单词按顺序出现，可间隔）
     3. continuous: 连续匹配（专有名词单词连续出现）
+    
+    只返回匹配到的专有名词在原始列表中的索引
     """
     
     def __init__(self, proper_nouns: List[str]):
@@ -212,7 +214,7 @@ class ProperNounMatcher:
             'continuous': []
         }
         
-        for noun in self.proper_nouns:
+        for idx, noun in enumerate(self.proper_nouns):
             # 清理和分割专有名词
             clean_noun = re.sub(r'\s+', ' ', noun.strip())
             words = clean_noun.split()
@@ -226,14 +228,14 @@ class ProperNounMatcher:
             # 连续匹配模式：单词必须连续出现
             continuous_pattern = r'\b' + r'\s+'.join(escaped_words) + r'\b'
             self.patterns['continuous'].append(
-                (noun, re.compile(continuous_pattern, re.IGNORECASE))
+                (idx, re.compile(continuous_pattern, re.IGNORECASE))
             )
             
             # 顺序匹配模式：单词按顺序出现，可间隔
             sequential_pattern = r'\b.*?\b'.join(escaped_words)
-            sequential_pattern = r'(?:(?<=\W)|^)' + sequential_pattern + r'(?:(?=\W)|$)'
+            sequential_pattern = r'(?:(?<=\W)|^)' + sequential_pattern + r'(?:(?=\W)|$)' 
             self.patterns['sequential'].append(
-                (noun, re.compile(sequential_pattern, re.IGNORECASE | re.DOTALL))
+                (idx, re.compile(sequential_pattern, re.IGNORECASE | re.DOTALL))
             )
             
             # 无论顺序匹配：所有单词都出现，不考虑顺序
@@ -241,132 +243,40 @@ class ProperNounMatcher:
             unordered_parts = [fr'(?=.*?\b{word}\b)' for word in escaped_words]
             unordered_pattern = ''.join(unordered_parts) + r'.*'
             self.patterns['unordered'].append(
-                (noun, re.compile(unordered_pattern, re.IGNORECASE | re.DOTALL))
+                (idx, re.compile(unordered_pattern, re.IGNORECASE | re.DOTALL))
             )
     
-    @lru_cache(maxsize=128)
-    def _get_word_boundary_regex(self, text: str) -> re.Pattern:
-        """获取单词边界正则表达式（缓存以提高性能）"""
-        # 匹配单词边界，考虑连字符、下划线等
-        return re.compile(r'\b\w+(?:[-\']\w+)*\b', re.IGNORECASE)
-    
-    def _find_word_indices(self, text: str) -> Dict[str, List[Tuple[int, int]]]:
+    def match_single(self, text: str, mode: str = 'continuous') -> List[int]:
         """
-        查找文本中所有单词的位置索引
-        
-        Returns:
-            字典：{单词: [(起始位置, 结束位置), ...]}
-        """
-        word_indices = {}
-        pattern = self._get_word_boundary_regex(text)
-        
-        for match in pattern.finditer(text):
-            word = match.group().lower()
-            span = match.span()
-            
-            if word not in word_indices:
-                word_indices[word] = []
-            word_indices[word].append(span)
-        
-        return word_indices
-    
-    def _match_unordered(self, text: str, noun: str, pattern: re.Pattern, 
-                         word_indices: Dict[str, List[Tuple[int, int]]]) -> List[Tuple[int, int]]:
-        """执行无论顺序匹配"""
-        if not pattern.search(text):
-            return []
-        
-        noun_words = [w.lower() for w in noun.split()]
-        matches = []
-        
-        # 对于无序匹配，我们需要找到每个单词的所有出现位置
-        word_positions = {}
-        for word in noun_words:
-            if word in word_indices:
-                word_positions[word] = word_indices[word]
-            else:
-                return []  # 如果有单词没找到，直接返回空
-        
-        for word in noun_words:
-            if word_positions[word]:
-                matches.append(word_positions[word][0])
-        
-        return matches
-    
-    def _match_sequential(self, text: str, noun: str, pattern: re.Pattern) -> List[Tuple[int, int]]:
-        """执行顺序匹配"""
-        match = pattern.search(text)
-        if not match:
-            return []
-        
-        noun_words = noun.split()
-        matches = []
-        
-        # 使用单词边界搜索每个单词
-        start_pos = match.start()
-        for word in noun_words:
-            escaped_word = re.escape(word)
-            word_pattern = re.compile(r'\b' + escaped_word + r'\b', re.IGNORECASE)
-            word_match = word_pattern.search(text, start_pos)
-            
-            if word_match:
-                matches.append(word_match.span())
-                start_pos = word_match.end()
-            else:
-                return []  # 理论上不会发生，因为pattern已经匹配
-        
-        return matches
-    
-    def _match_continuous(self, text: str, noun: str, pattern: re.Pattern) -> List[Tuple[int, int]]:
-        """执行连续匹配"""
-        matches = []
-        for match in pattern.finditer(text):
-            matches.append(match.span())
-        return matches
-    
-    def match_single(self, text: str, mode: str = 'continuous') -> List[Tuple[str, List[Tuple[int, int]]]]:
-        """
-        匹配单个文本
+        匹配单个文本，返回匹配到的专有名词索引列表
         
         Args:
             text: 要匹配的文本
             mode: 匹配模式，可选 'unordered', 'sequential', 'continuous'
             
         Returns:
-            匹配结果列表，每个元素是 (专有名词, [(起始位置1, 结束位置1), ...])
+            匹配到的专有名词索引列表
         """
         if mode not in self.patterns:
             raise ValueError(f"无效的匹配模式: {mode}。可选: {list(self.patterns.keys())}")
         
-        results = []
+        matched_indices = []
         
-        # 对于unordered模式，预处理单词索引
-        word_indices = None
-        if mode == 'unordered':
-            word_indices = self._find_word_indices(text)
+        for idx, pattern in self.patterns[mode]:
+            if pattern.search(text):
+                matched_indices.append(idx)
         
-        for noun, pattern in self.patterns[mode]:
-            if mode == 'unordered':
-                matches = self._match_unordered(text, noun, pattern, word_indices)
-            elif mode == 'sequential':
-                matches = self._match_sequential(text, noun, pattern)
-            else:  # continuous
-                matches = self._match_continuous(text, noun, pattern)
-            
-            if matches:
-                results.append((noun, matches))
-        
-        return results
+        return matched_indices
     
-    def match_multiple(self, texts: List[str], mode: str = 'continuous') -> List[List[Tuple[str, List[Tuple[int, int]]]]]:
+    def match_multiple(self, texts: List[str], mode: str = 'continuous') -> List[List[int]]:
         """
-        批量匹配多个文本
+        批量匹配多个文本，返回每个文本匹配到的专有名词索引列表
         
         Args:
             texts: 文本列表
             mode: 匹配模式
             
         Returns:
-            每个文本的匹配结果列表
+            每个文本匹配到的专有名词索引列表
         """
         return [self.match_single(text, mode) for text in texts]
