@@ -50,7 +50,8 @@ class BaiduTranslator(TranslatorBase):
     
     DEFAULT_API_KEY = {
         "appid": "",
-        "appkey": ""
+        "appkey": "",
+        "needIntervene": False
     }
     
     DESCRIBE_API_KEY = [
@@ -67,9 +68,15 @@ class BaiduTranslator(TranslatorBase):
             "type": "string",
             "required": True,
             "description": "百度翻译appkey"
+        },
+        {
+            "id": "needIntervene",
+            "name": "是否需要使用术语库",
+            "type": "boolean",
+            "required": False,
+            "description": "是否需要使用术语库，默认为False"
         }
     ]
-    
     metadata = Metadata(
         console_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
         description="百度翻译服务实现",
@@ -85,10 +92,19 @@ class BaiduTranslator(TranslatorBase):
             config: 翻译配置对象
             **kwargs: 额外配置参数，支持appid, appkey等
         """
+        self.DEFAULT_PREPROCESSING.append(self._preprocess_baidu)
+        self.DEFAULT_POSTPROCESSING.append(self._postprocess_text)
+        
         super().__init__(config, **kwargs)
         
         # 线程本地存储，用于速率限制
         self.MIN_REQUEST_INTERVAL = 0.5  # 百度API建议的最小请求间隔
+        
+    def _preprocess_baidu(self, text: str, **kwargs) -> str:
+        text.replace('\n','\\n')
+        
+    def _postprocess_text(self, text: str, **kwargs) -> str:
+        return text.replace('\\n', '\n')
         
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
         """
@@ -115,8 +131,11 @@ class BaiduTranslator(TranslatorBase):
             'from': source_lang,
             'to': target_lang,
             'salt': salt,
-            'sign': sign
+            'sign': sign,
         }
+        
+        if self.needIntervene:
+            params["needIntervene"] = 1
         
         # 发送请求
         response = self._session.get(url, params=params, timeout=self.config.timeout)

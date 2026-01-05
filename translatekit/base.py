@@ -183,6 +183,8 @@ class TranslatorBase(abc.ABC):
     DEFAULT_CONFIG = TranslationConfig()
     DEFAULT_API_KEY = {}
     DESCRIBE_API_KEY = {}
+    DEFAULT_PREPROCESSING = []
+    DEFAULT_POSTPROCESSING = []
     
     METADATA = Metadata(
         console_url="",
@@ -207,8 +209,8 @@ class TranslatorBase(abc.ABC):
         self._thread_local = threading.local()
         self._executor = None
         self._session = requests.session()
-        self._process_pre = []
-        self._process_post = []
+        self.clear_preprocess()
+        self.clear_postprocess()
         self._config_checked = False
         
         warnings.simplefilter("always", ConfigWarning)
@@ -799,11 +801,11 @@ class TranslatorBase(abc.ABC):
 
     def clear_preprocess(self):
         """清除所有预处理函数"""
-        self._process_pre.clear()
+        self._process_pre = self.DEFAULT_PREPROCESSING.copy()
         
     def clear_postprocess(self):
         """清除所有后处理函数"""
-        self._process_post.clear()
+        self._process_post = self.DEFAULT_POSTPROCESSING.copy()
     
     def _update_usage_metrics(self, original_text: str, translated_text: str):
         """更新使用量统计（子类可覆盖）"""
