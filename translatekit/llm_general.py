@@ -33,7 +33,6 @@ class LLMGeneralTranslator(TranslatorBase):
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0,
         "system_prompt": "你是一个专业的翻译助手，严格按照要求完成翻译任务，只返回翻译结果，不添加任何额外解释、说明或格式。",
-        "user_prompt_base": "{0}",
         "response_format": "text"
     }
 
@@ -199,7 +198,7 @@ class LLMGeneralTranslator(TranslatorBase):
         # 拼接完整的API端点
         self.complete_api_url = f"{self.base_url.rstrip('/')}{self.CHAT_COMPLETIONS_ENDPOINT}"
         
-        self.logger.debug(f"LLM翻译器初始化完成，API地址: {self.complete_api_url}，模型: {self.model}")
+        self.logger.debug(f"LLM翻译器初始化完成，API地址: {self.complete_api_url}，模型: {self.model_name}")
 
     def _update_config_from_kwargs(self, kwargs: Dict):
         """更新配置参数"""
