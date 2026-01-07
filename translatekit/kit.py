@@ -140,7 +140,8 @@ def filted_patchs(jsonpatchs : List[dict],
                           allow_list : List[str] = [".*"],
                           disallow_list : List[str] = ["$."],
                           disallow_op : List[str] = [],
-                          disallow_type : List[type] = []) -> List[dict]:
+                          disallow_type : List[type] = [],
+                          disallow_value : List[str] = []) -> List[dict]:
     """通过正则表达式或op或类型过滤补丁，返回过滤后的补丁列表"""
     # 编译正则表达式
     allow_regex = re.compile("|".join(allow_list))
@@ -155,7 +156,8 @@ def filted_patchs(jsonpatchs : List[dict],
         if (allow_regex.search(path) and
             not disallow_regex.search(path) and
             not op in disallow_op and
-            not isinstance(value, tuple(disallow_type))):
+            not isinstance(value, tuple(disallow_type)) and
+            not value in disallow_value):
             filtered_patchs.append(patch)
     return filtered_patchs
 
@@ -164,7 +166,8 @@ def apply_filtered_patchs(original_jsonpatchs : List[dict],
                           allow_list : List[str] = ['.*'],
                           disallow_list : List[str] = ["$."],
                           disallow_op : List[str] = [],
-                          disallow_type : List[type] = []) -> List[dict]:
+                          disallow_type : List[type] = [],
+                          disallow_value : List[str] = []) -> List[dict]:
     """恢复被过滤的补丁，返回恢复后的JsonPatch列表"""
     # 编译正则表达式
     allow_regex = re.compile("|".join(allow_list))
@@ -179,7 +182,8 @@ def apply_filtered_patchs(original_jsonpatchs : List[dict],
         if (allow_regex.search(path) and
             not disallow_regex.search(path) and
             not op in disallow_op and
-            not isinstance(value, tuple(disallow_type))):
+            not isinstance(value, tuple(disallow_type)) and
+            not value in disallow_value):
             result[index] = _filted_jsonpatchs.pop(0)
 
     return result
