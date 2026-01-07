@@ -255,7 +255,7 @@ class LLMGeneralTranslator(TranslatorBase):
         """
         # 构建请求参数
         request_data = {
-            "model": self.model,
+            "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "top_p": self.top_p,
