@@ -27,7 +27,7 @@ class LLMGeneralTranslator(TranslatorBase):
         "api_key": "",
         "base_url": "https://api.openai.com/v1",
         "model_name": "gpt-3.5-turbo",
-        "temperature": 0.0,
+        "temperature": 1.0,
         "max_tokens": 4000,
         "top_p": 1.0,
         "frequency_penalty": 0.0,
@@ -221,11 +221,7 @@ class LLMGeneralTranslator(TranslatorBase):
         
         if not (0.0 <= self.temperature <= 2.0):
             warnings.warn("temperature应在0.0-2.0之间，已自动修正为0.0", ConfigWarning)
-            self.temperature = 0.0
-            
-        if self.max_tokens <= 0 or self.max_tokens > 16000:
-            warnings.warn("max_tokens建议在1-16000之间，已自动修正为4000", ConfigWarning)
-            self.max_tokens = 4000
+            self.temperature = 1.0
             
         # URL格式校验
         if not self.base_url.startswith(('http://', 'https://')):
@@ -264,9 +260,7 @@ class LLMGeneralTranslator(TranslatorBase):
             "response_format": {"type": self.response_format},
             "messages": self._build_translation_prompt(text)
         }
-        
-        self.logger.debug(f"发送翻译请求到 {self.complete_api_url}，模型: {request_data['model']}")
-        
+                
         try:
             # 发送API请求
             response = self._session.post(
@@ -277,7 +271,14 @@ class LLMGeneralTranslator(TranslatorBase):
             )
             
             # 状态码处理
-            if response.status_code == 401:
+            if response.status_code == 400:
+                try:
+                    error_message = response.json()
+                    self.logger.debug(f"API错误: {error_message}")
+                except Exception:
+                    pass
+                raise APIError("请求构造错误")
+            elif response.status_code == 401:
                 raise APIError("API认证失败，请检查api_key是否正确")
             elif response.status_code == 403:
                 raise APIError("API访问被拒绝，可能是密钥权限不足或IP受限")
@@ -313,7 +314,6 @@ class LLMGeneralTranslator(TranslatorBase):
             if not translation:
                 raise APIError("大模型返回空的翻译结果")
             
-            self.logger.debug(f"翻译响应解析完成，结果长度: {len(translation)}")
             return translation
             
         except KeyError as e:

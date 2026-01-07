@@ -421,7 +421,7 @@ class TranslatorBase(abc.ABC):
     @retry_on_failure(max_retries=3, retry_strategy=RetryStrategy.EXPONENTIAL)
     def _translate_call(self, translate_func: Callable, text: str, source_lang: str, target_lang: str, **kwargs) -> str:
         """包装翻译函数"""
-        self.logger.debug(f"直接翻译: {text[:50]}...")
+        self.logger.debug(f"直接翻译: {text[:30]}...")
         
         # 预处理文本
         processed_text = self._preprocess_text(text, **kwargs)
