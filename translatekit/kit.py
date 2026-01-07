@@ -184,7 +184,7 @@ def apply_filtered_patchs(original_jsonpatchs : List[dict],
 
     return result
 
-class ProperNounMatcher:
+class ProperNounMatcherEN:
     """
     专有名词匹配器（简化版）
     
@@ -280,3 +280,164 @@ class ProperNounMatcher:
             每个文本匹配到的专有名词索引列表
         """
         return [self.match_single(text, mode) for text in texts]
+
+class ProperNounMatcher:
+    """
+    专有名词匹配器（简化版）
+    
+    支持三种匹配模式：
+    1. unordered: 无论顺序匹配（专有名词中的所有单词都出现，不考虑顺序）
+    2. sequential: 顺序匹配（专有名词单词按顺序出现，可间隔）
+    3. continuous: 连续匹配（专有名词单词连续出现）
+    
+    只返回匹配到的专有名词在原始列表中的索引
+    """
+    
+    def __init__(self, proper_nouns: List[str]):
+        """
+        初始化匹配器
+        
+        Args:
+            proper_nouns: 专有名词列表
+        """
+        self.proper_nouns = proper_nouns
+        self._build_patterns()
+    
+    def _build_patterns(self):
+        """构建各种匹配模式的正则表达式"""
+        self.patterns = {
+            'unordered': [],
+            'sequential': [],
+            'continuous': []
+        }
+        
+        for idx, noun in enumerate(self.proper_nouns):
+            # 清理和分割专有名词
+            clean_noun = re.sub(r'\s+', ' ', noun.strip())
+            words = clean_noun.split()
+            
+            if not words:
+                continue
+                
+            # 转义单词中的特殊字符
+            escaped_words = [re.escape(word) for word in words]
+            
+            # 连续匹配模式：单词必须连续出现
+            continuous_pattern = r'\s?'.join(escaped_words)
+            self.patterns['continuous'].append(
+                (idx, re.compile(continuous_pattern, re.IGNORECASE))
+            )
+            
+            # 顺序匹配模式：单词按顺序出现，可间隔
+            sequential_pattern = r'.*?'.join(escaped_words)
+            self.patterns['sequential'].append(
+                (idx, re.compile(sequential_pattern, re.IGNORECASE | re.DOTALL))
+            )
+            
+            # 无论顺序匹配：所有单词都出现，不考虑顺序
+            # 使用正向肯定预查确保所有单词都出现
+            unordered_parts = [fr'(?=.*?{word})' for word in escaped_words]
+            unordered_pattern = ''.join(unordered_parts) + r'.*'
+            self.patterns['unordered'].append(
+                (idx, re.compile(unordered_pattern, re.IGNORECASE | re.DOTALL))
+            )
+    
+    def match_single(self, text: str, mode: str = 'continuous') -> List[int]:
+        """
+        匹配单个文本，返回匹配到的专有名词索引列表
+        
+        Args:
+            text: 要匹配的文本
+            mode: 匹配模式，可选 'unordered', 'sequential', 'continuous'
+            
+        Returns:
+            匹配到的专有名词索引列表
+        """
+        if mode not in self.patterns:
+            raise ValueError(f"无效的匹配模式: {mode}。可选: {list(self.patterns.keys())}")
+        
+        matched_indices = []
+        
+        for idx, pattern in self.patterns[mode]:
+            if pattern.search(text):
+                matched_indices.append(idx)
+        
+        return matched_indices
+    
+    def match_multiple(self, texts: List[str], mode: str = 'continuous') -> List[List[int]]:
+        """
+        批量匹配多个文本，返回每个文本匹配到的专有名词索引列表
+        
+        Args:
+            texts: 文本列表
+            mode: 匹配模式
+            
+        Returns:
+            每个文本匹配到的专有名词索引列表
+        """
+        return [self.match_single(text, mode) for text in texts]
+
+
+class SimpleMatcher:
+    """
+    简化版专有名词匹配器，只考虑连续匹配一种情况
+    """
+    
+    def __init__(self, proper_nouns: List[str]):
+        """
+        初始化匹配器
+        
+        Args:
+            proper_nouns: 专有名词列表
+        """
+        self.proper_nouns = proper_nouns
+        self._build_patterns()
+    
+    def _build_patterns(self):
+        """构建连续匹配模式的正则表达式"""
+        self.patterns = []
+        
+        for idx, noun in enumerate(self.proper_nouns):
+            clean_noun = noun
+            
+            if not clean_noun:
+                continue
+                
+            # 转义整个专有名词中的特殊字符
+            escaped_noun = re.escape(clean_noun)
+            
+            # 整体匹配模式：整个专有名词作为一个整体匹配
+            whole_pattern = escaped_noun
+            self.patterns.append(
+                (idx, re.compile(whole_pattern, re.IGNORECASE))
+            )
+    
+    def match_single(self, text: str) -> List[int]:
+        """
+        匹配单个文本，返回匹配到的专有名词索引列表
+        
+        Args:
+            text: 要匹配的文本
+            
+        Returns:
+            匹配到的专有名词索引列表
+        """
+        matched_indices = []
+        
+        for idx, pattern in self.patterns:
+            if pattern.search(text):
+                matched_indices.append(idx)
+        
+        return matched_indices
+    
+    def match_multiple(self, texts: List[str]) -> List[List[int]]:
+        """
+        批量匹配多个文本，返回每个文本匹配到的专有名词索引列表
+        
+        Args:
+            texts: 文本列表
+            
+        Returns:
+            每个文本匹配到的专有名词索引列表
+        """
+        return [self.match_single(text) for text in texts]
