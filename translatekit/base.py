@@ -224,7 +224,7 @@ class TranslatorBase(abc.ABC):
         if kwargs:
             self._update_config_from_kwargs(kwargs)
         
-        self._update_inner_config()
+        self._update_inner_config(_log=True)
         
         self._cache = {} if self.config.enable_cache else None
         self._metrics = {} if self.config.enable_metrics else None
@@ -361,6 +361,7 @@ class TranslatorBase(abc.ABC):
             return [self._translate_single(texts[0], source_lang, target_lang, method, **kwargs)]
         
         # 选择翻译方法
+        self.logger.debug(f"批量翻译 {len(texts)} 个文本")
         method = method or self.config.method
         translate_func = self._select_translate_method(method)
         
@@ -532,7 +533,7 @@ class TranslatorBase(abc.ABC):
         """
         pass
 
-    def _update_inner_config(self):
+    def _update_inner_config(self, _log = False):
         """将self.config.api_setting的内容更新至类中"""
         if self.config.ignore_ssl_errors:
             self._session.verify = False
@@ -550,7 +551,8 @@ class TranslatorBase(abc.ABC):
                     continue
                 DescribeAPI = [d for d in self.DESCRIBE_API_KEY if d['id'] == targetKeyName][0]
                 setattr(self, targetKeyName, self.config.api_setting.get(targetKeyName))
-                self.logger.debug(f"设置{DescribeAPI['name']} 内容: {getattr(self, targetKeyName)}")
+                if _log:
+                    self.logger.debug(f"设置{DescribeAPI['name']} 内容: {getattr(self, targetKeyName)}")
 
     def get_special_api_reference(self) -> Dict[str, Any]:
         """
