@@ -73,7 +73,7 @@ class TranslationConfig:
     
     # 文本处理
     text_max_length: int = 2000
-    split_strategy: SplitStrategy = SplitStrategy.SENTENCE
+    split_strategy: SplitStrategy = SplitStrategy.SEMANTIC
     enable_preprocessing: bool = True
     enable_postprocessing: bool = True
     
