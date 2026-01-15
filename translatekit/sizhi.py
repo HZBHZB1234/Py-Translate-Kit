@@ -30,7 +30,7 @@ class SizhiTranslator(TranslatorBase):
     DEFAULT_API_KEY = {
         "appid": "",
         "userid": "",
-        "prompt": "请将以下文本进行翻译，只返回翻译结果：\n{text}"
+        "prompt": "请将以下文本翻译为{target}，只返回翻译结果：\n{text}"
     }
     
     DESCRIBE_API_KEY = [
@@ -82,6 +82,10 @@ class SizhiTranslator(TranslatorBase):
         # 线程本地存储，用于速率限制
         self.MIN_REQUEST_INTERVAL = 1.0  # 思知API建议的最小请求间隔
     
+    def _validate_languages(self, source_lang: str, target_lang: str):
+        """无需验证语言对"""
+        pass
+    
     def _translate_default(self, text: str, source_lang: str, target_lang: str, **kwargs) -> Any:
         """
         调用思知对话API进行翻译
@@ -93,11 +97,12 @@ class SizhiTranslator(TranslatorBase):
             **kwargs: 额外参数
         """
         # 使用prompt模板，将{text}替换为实际文本
-        if hasattr(self, 'prompt'):
-            prompt_text = self.prompt.format(text=text)
+        if hasattr(self, 'prompt') and self.prompt:
+            prompt_text = self.prompt.format(
+                text=text,target=target_lang)
         else:
             # 默认prompt
-            prompt_text = f"请将以下文本进行翻译，只返回翻译结果：\n{text}"
+            prompt_text = f"请将以下文本翻译为{target_lang}，只返回翻译结果：\n{text}"
         
         # 构建API请求URL和参数
         url = f"{self.BASE_ENDPOINT}{self.CHAT_ENDPOINT}"

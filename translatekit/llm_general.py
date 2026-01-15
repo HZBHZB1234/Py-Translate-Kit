@@ -200,6 +200,10 @@ class LLMGeneralTranslator(TranslatorBase):
         
         self.logger.debug(f"LLM翻译器初始化完成，API地址: {self.complete_api_url}，模型: {self.model_name}")
 
+    def _validate_languages(self, source_lang: str, target_lang: str):
+        """无需验证语言对"""
+        pass
+    
     def _update_config_from_kwargs(self, kwargs: Dict):
         """更新配置参数"""
         if "model" in kwargs:
