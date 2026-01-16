@@ -57,7 +57,7 @@ class SizhiTranslator(TranslatorBase):
         }
     ]
     
-    metadata = Metadata(
+    METADATA = Metadata(
         console_url="https://sizhi.com",
         description="思知（Sizhi）对话API翻译服务，使用对话机器人进行翻译",
         documentation_url="https://docs.sizhi.com",

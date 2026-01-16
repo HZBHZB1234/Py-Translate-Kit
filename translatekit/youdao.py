@@ -291,7 +291,7 @@ class YoudaoTranslator(TranslatorBase):
         }
     ]
     
-    metadata = Metadata(
+    METADATA = Metadata(
         console_url="https://ai.youdao.com/",
         description="有道智云翻译服务实现",
         documentation_url="https://ai.youdao.com/doc.s",
