@@ -87,8 +87,8 @@ class LibreTranslator(TranslatorBase):
         if not self.api_key and not self.use_free_api:
             raise ConfigurationError("必须提供API密钥或使用免费API")
 
-    def _update_inner_config(self):
-        super()._update_inner_config()
+    def _update_inner_config(self, _log = False):
+        super()._update_inner_config(_log)
         
         # 如果提供了自定义URL，更新BASE_ENDPOINT
         if self.custom_url:

@@ -28,7 +28,7 @@ class TencentTranslator(TranslatorBase):
     BASE_ENDPOINT = "https://tmt.tencentcloudapi.com"
     
     DEFAULT_API_KEY = {
-        "ecret_id": "",
+        "secret_id": "",
         "secret_key": "",
         "project_id": 0,
         "region": "ap-beijing"

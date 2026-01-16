@@ -77,7 +77,7 @@ class BaiduTranslator(TranslatorBase):
             "description": "是否需要使用术语库，默认为False"
         }
     ]
-    metadata = Metadata(
+    METADATA= Metadata(
         console_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
         description="百度翻译服务实现",
         documentation_url="https://fanyi-api.baidu.com/doc/11",
