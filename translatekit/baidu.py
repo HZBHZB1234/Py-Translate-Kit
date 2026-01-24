@@ -101,7 +101,7 @@ class BaiduTranslator(TranslatorBase):
         self.MIN_REQUEST_INTERVAL = 0.5  # 百度API建议的最小请求间隔
         
     def _preprocess_baidu(self, text: str, **kwargs) -> str:
-        text.replace('\n','\\n')
+        return text.replace('\n','\\n')
         
     def _postprocess_text(self, text: str, **kwargs) -> str:
         return text.replace('\\n', '\n')
