@@ -822,7 +822,7 @@ class TranslatorBase(abc.ABC):
 
     def _setup_logger(self) -> logging.Logger:
         """设置日志记录器"""
-        logger = logging.getLogger(f"translator.{self.SERVICE_NAME}")
+        logger = logging.getLogger(f"translatekit")
         
         if not logger.handlers:
             handler = logging.StreamHandler()
