@@ -23,6 +23,24 @@ from .llm_general import LLMGeneralTranslator
 from .null_translator import NullTranslator
 from . import kit
 
+relateForm = {
+    "百度翻译服务": BaiduTranslator,
+    "Google翻译服务": GoogleTranslator,
+    "DeepL翻译服务": DeepLTranslator,
+    "Microsoft翻译服务": MicrosoftTranslator,
+    "Yandex Cloud翻译服务": YandexTranslator,
+    "Libre翻译服务": LibreTranslator,
+    "MyMemory翻译服务": MyMemoryTranslator,
+    "Papago翻译服务": PapagoTranslator,
+    "Linguee翻译服务": LingueeTranslator,
+    "腾讯翻译服务": TencentTranslator,
+    "有道翻译服务": YoudaoTranslator,
+    "思知对话翻译服务": SizhiTranslator,
+    "空翻译器(使用原文)": NullTranslator,
+    "LLM通用翻译服务": LLMGeneralTranslator
+}
+
+
 __all__ = [
     'TranslatorBase',
     'TranslationConfig',
@@ -48,5 +66,5 @@ __all__ = [
     'kit'
 ]
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 __author__ = "HZBHZB1234"
