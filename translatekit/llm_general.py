@@ -33,7 +33,8 @@ class LLMGeneralTranslator(TranslatorBase):
         "frequency_penalty": 0.0,
         "presence_penalty": 0.0,
         "system_prompt": "你是一个专业的翻译助手，严格按照要求完成翻译任务，只返回翻译结果，不添加任何额外解释、说明或格式。",
-        "response_format": "text"
+        "response_format": "text",
+        "extra_body": {}
     }
 
     DESCRIBE_API_KEY = [
@@ -106,6 +107,13 @@ class LLMGeneralTranslator(TranslatorBase):
             "type": "string",
             "required": False,
             "description": "响应格式定义，可选json_object，text"
+        },
+        {
+            "id": "extra_body",
+            "name": "额外请求体",
+            "type": "dictionary",
+            "required": False,
+            "description": "额外的请求体参数，将以字典形式合并到API请求体中，用于传递特殊参数（如OpenAI的reasoning_effort、seed等）"
         }
     ]
     
@@ -264,6 +272,10 @@ class LLMGeneralTranslator(TranslatorBase):
             "response_format": {"type": self.response_format},
             "messages": self._build_translation_prompt(text)
         }
+
+        # 合并额外请求体参数（extra_body中的键会覆盖已有键）
+        if self.extra_body:
+            request_data.update(self.extra_body)
                 
         try:
             # 发送API请求
