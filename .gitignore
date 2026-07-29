@@ -4,6 +4,7 @@ dev
 test.py
 test*.py
 !test_argu.py
+!test/test_batch.py
 test_assets/
 *.docx
 *.pdf

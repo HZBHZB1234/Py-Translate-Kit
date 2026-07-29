@@ -6,6 +6,7 @@ translator/base.py
 """
 
 import abc
+import json
 import logging
 import time
 import threading
@@ -15,7 +16,7 @@ import urllib3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Union, Callable, Any, Tuple
 from functools import wraps
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from copy import deepcopy
 
@@ -102,6 +103,39 @@ class TranslationConfig:
         if self.api_setting is None:
             self.api_setting = {}
 
+
+@dataclass
+class TranslationRequest:
+    """一次独立翻译请求，options 不会写回翻译器共享配置。"""
+
+    text: str
+    request_id: Optional[str] = None
+    source_lang: Optional[str] = None
+    target_lang: Optional[str] = None
+    method: Optional[str] = None
+    options: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.options = dict(self.options or {})
+        self.metadata = dict(self.metadata or {})
+
+
+@dataclass
+class TranslationResult:
+    """单个批量请求的结果；失败项通过 error 隔离。"""
+
+    request_id: Optional[str]
+    value: Optional[str] = None
+    error: Optional[Exception] = None
+    elapsed_seconds: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    http_attempts: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def succeeded(self) -> bool:
+        return self.error is None
+
 @dataclass
 class Metadata:
     """翻译器元数据信息"""
@@ -156,17 +190,19 @@ def with_cache(func):
         if self.config.enable_cache is False:
             return func(self, translate_func, text, source_lang, target_lang, **kwargs)
         # 检查缓存
-        cache_key = self._get_cache_key(text, source_lang, target_lang)
-        if self._cache and cache_key in self._cache:
-            self.logger.debug("缓存命中")
-            return self._cache[cache_key]
+        cache_key = self._get_cache_key(text, source_lang, target_lang, kwargs)
+        with self._cache_lock:
+            if self._cache and cache_key in self._cache:
+                self.logger.debug("缓存命中")
+                return self._cache[cache_key]
         
         # 执行实际函数
         result = func(self, translate_func, text, source_lang, target_lang, **kwargs)
         
         # 更新缓存
         if self._cache is not None:
-            self._update_cache(cache_key, result)
+            with self._cache_lock:
+                self._update_cache(cache_key, result)
             
         return result
     return wrapper
@@ -208,7 +244,15 @@ class TranslatorBase(abc.ABC):
         self.logger = self._setup_logger()
         self._thread_local = threading.local()
         self._executor = None
+        self._executor_lock = threading.Lock()
+        self._config_lock = threading.Lock()
+        self._cache_lock = threading.Lock()
+        self._metrics_lock = threading.Lock()
+        self._rate_limit_lock = threading.Lock()
+        self._next_request_time = 0.0
+        self._sessions_lock = threading.Lock()
         self._session = requests.session()
+        self._sessions = [self._session]
         self.clear_preprocess()
         self.clear_postprocess()
         self._config_checked = False
@@ -217,7 +261,7 @@ class TranslatorBase(abc.ABC):
         warnings.simplefilter("always", TranslationWarning)
         
         if self.DEFAULT_API_KEY:
-            self.config.api_setting = self.DEFAULT_API_KEY
+            self.config.api_setting = deepcopy(self.DEFAULT_API_KEY)
             if hasattr(config, "api_setting") and config.api_setting:
                 self.config.api_setting.update(config.api_setting)
         
@@ -339,6 +383,71 @@ class TranslatorBase(abc.ABC):
         
         return result
 
+    def translate_many(
+        self,
+        requests_: List[TranslationRequest],
+        max_workers: Optional[int] = None,
+    ) -> List[TranslationResult]:
+        """并发执行结构化请求，保持输入顺序并隔离单项失败。"""
+        normalized = []
+        for request in requests_:
+            if isinstance(request, TranslationRequest):
+                normalized.append(request)
+            elif isinstance(request, str):
+                normalized.append(TranslationRequest(text=request))
+            else:
+                raise TypeError("translate_many 仅接受 TranslationRequest 或 str")
+
+        if not normalized:
+            return []
+
+        with self._config_lock:
+            if not self._config_checked:
+                self.validate_config()
+                self._config_checked = True
+
+        executor = self._get_executor()
+        batch_limit = max(1, int(max_workers or self.config.max_workers))
+        batch_semaphore = threading.Semaphore(batch_limit)
+
+        def execute(request: TranslationRequest) -> TranslationResult:
+            started = time.perf_counter()
+            self._thread_local.http_attempts = []
+            previous_executor_state = getattr(self._thread_local, "in_executor", False)
+            self._thread_local.in_executor = True
+            try:
+                source_lang = request.source_lang or self.config.source_lang
+                target_lang = request.target_lang or self.config.target_lang
+                self._validate_languages(source_lang, target_lang)
+                with batch_semaphore:
+                    value = self._translate_single(
+                        request.text,
+                        source_lang,
+                        target_lang,
+                        request.method,
+                        **request.options,
+                    )
+                return TranslationResult(
+                    request_id=request.request_id,
+                    value=value,
+                    elapsed_seconds=round(time.perf_counter() - started, 3),
+                    metadata=dict(request.metadata),
+                    http_attempts=self._consume_http_attempts(),
+                )
+            except Exception as exc:
+                return TranslationResult(
+                    request_id=request.request_id,
+                    error=exc,
+                    elapsed_seconds=round(time.perf_counter() - started, 3),
+                    metadata=dict(request.metadata),
+                    http_attempts=self._consume_http_attempts(),
+                )
+            finally:
+                self._thread_local.in_executor = previous_executor_state
+
+        futures = [executor.submit(execute, request) for request in normalized]
+        return [future.result() for future in futures]
+
     # ==================== 核心翻译实现 ====================
     
     def _translate_single(self, text: str, source_lang: str, target_lang: str, 
@@ -404,7 +513,11 @@ class TranslatorBase(abc.ABC):
         self.logger.debug(f"分割为 {len(chunks)} 个片段")
         
         # 并行翻译各个片段
-        if len(chunks) > 1 and self.config.max_workers > 1:
+        if (
+            len(chunks) > 1
+            and self.config.max_workers > 1
+            and not getattr(self._thread_local, "in_executor", False)
+        ):
             translated_chunks = self._translate_parallel(chunks, source_lang, target_lang, translate_func, **kwargs)
         else:
             # 串行翻译
@@ -633,28 +746,68 @@ class TranslatorBase(abc.ABC):
         Returns:
             翻译结果列表
         """
-        if not self._executor:
-            self._executor = ThreadPoolExecutor(max_workers=self.config.max_workers)
-            
-        # 创建futures并保持与输入文本的对应关系
-        futures = []
-        for text in texts:
-            future = self._executor.submit(
-                self._translate_call, translate_func, text, source_lang, target_lang, **kwargs
+        executor = self._get_executor()
+        futures = [
+            executor.submit(
+                self._translate_call,
+                translate_func,
+                text,
+                source_lang,
+                target_lang,
+                **kwargs,
             )
-            futures.append(future)
-            
-        # 按照提交顺序收集结果，确保顺序一致
+            for text in texts
+        ]
         results = []
         for future in futures:
             try:
-                result = future.result()
-                results.append(result)
-            except Exception as e:
-                self.logger.error(f"并行翻译失败: {e}")
-                results.append("")  # 错误时返回空字符串
-                
+                results.append(future.result())
+            except Exception as exc:
+                self.logger.error(f"并行翻译失败: {exc}")
+                results.append("")
         return results
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        with self._executor_lock:
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=max(1, int(self.config.max_workers))
+                )
+            return self._executor
+
+    def _get_session(self):
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            session = requests.session()
+            session.verify = not self.config.ignore_ssl_errors
+            if self.config.proxies:
+                session.proxies = self.config.proxies
+            self._thread_local.session = session
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
+
+    def _record_http_response(self, response) -> None:
+        attempts = getattr(self._thread_local, "http_attempts", None)
+        if attempts is None:
+            return
+        try:
+            elapsed = response.elapsed.total_seconds() if response.elapsed else None
+        except Exception:
+            elapsed = None
+        attempts.append({
+            "url": getattr(response, "url", ""),
+            "status_code": getattr(response, "status_code", None),
+            "reason": getattr(response, "reason", ""),
+            "headers": dict(getattr(response, "headers", {}) or {}),
+            "body": getattr(response, "text", ""),
+            "elapsed_seconds": elapsed,
+        })
+
+    def _consume_http_attempts(self) -> List[Dict[str, Any]]:
+        attempts = list(getattr(self._thread_local, "http_attempts", []))
+        self._thread_local.http_attempts = []
+        return attempts
 
     # ==================== 错误处理与重试 ====================
     
@@ -692,18 +845,14 @@ class TranslatorBase(abc.ABC):
     
     def _apply_rate_limiting(self):
         """应用速率限制"""
-        if not hasattr(self._thread_local, 'last_request_time'):
-            self._thread_local.last_request_time = 0
-            
-        current_time = time.time()
-        time_since_last = current_time - self._thread_local.last_request_time
-        
         min_interval = getattr(self, 'MIN_REQUEST_INTERVAL', 0.1)
-        if time_since_last < min_interval:
-            sleep_time = min_interval - time_since_last
+        with self._rate_limit_lock:
+            current_time = time.monotonic()
+            scheduled_time = max(current_time, self._next_request_time)
+            self._next_request_time = scheduled_time + min_interval
+        sleep_time = scheduled_time - current_time
+        if sleep_time > 0:
             time.sleep(sleep_time)
-            
-        self._thread_local.last_request_time = time.time()
 
     # ==================== 配置管理 ====================
     
@@ -744,9 +893,25 @@ class TranslatorBase(abc.ABC):
 
     # ==================== 缓存管理 ====================
     
-    def _get_cache_key(self, text: str, source_lang: str, target_lang: str) -> str:
+    def _get_cache_key(
+        self,
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """生成缓存键"""
-        return f"{source_lang}_{target_lang}_{hash(text)}"
+        cache_options = {
+            key: value for key, value in (options or {}).items()
+            if not key.startswith("_") and key not in {"response_callback"}
+        }
+        serialized_options = json.dumps(
+            cache_options,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        return f"{source_lang}_{target_lang}_{hash((text, serialized_options))}"
 
     def _update_cache(self, key: str, value: str):
         """更新缓存"""
@@ -815,10 +980,11 @@ class TranslatorBase(abc.ABC):
             return
             
         chars_translated = len(original_text)
-        self._metrics.setdefault('chars_translated', 0)
-        self._metrics['chars_translated'] += chars_translated
-        self._metrics.setdefault('request_count', 0)
-        self._metrics['request_count'] += 1
+        with self._metrics_lock:
+            self._metrics.setdefault('chars_translated', 0)
+            self._metrics['chars_translated'] += chars_translated
+            self._metrics.setdefault('request_count', 0)
+            self._metrics['request_count'] += 1
 
     def _setup_logger(self) -> logging.Logger:
         """设置日志记录器"""
@@ -844,9 +1010,18 @@ class TranslatorBase(abc.ABC):
 
     def close(self):
         """清理资源"""
-        if self._executor:
-            self._executor.shutdown(wait=True)
-            self._executor = None
+        with self._executor_lock:
+            if self._executor:
+                self._executor.shutdown(wait=True)
+                self._executor = None
+        with self._sessions_lock:
+            sessions = list(self._sessions)
+            self._sessions = []
+        for session in sessions:
+            try:
+                session.close()
+            except Exception:
+                pass
 
     # ==================== 工具方法 ====================
     def get_performance_metrics(self) -> Dict[str, Any]:

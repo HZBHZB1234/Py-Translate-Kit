@@ -239,13 +239,17 @@ class LLMGeneralTranslator(TranslatorBase):
         if not self.base_url.startswith(('http://', 'https://')):
             raise ConfigurationError(f"base_url格式错误: {self.base_url}，必须以http://或https://开头")
 
-    def _build_translation_prompt(self, text) -> List[Dict[str, str]]:
+    def _build_translation_prompt(
+        self,
+        text,
+        system_prompt: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
         """构建翻译请求的Prompt（适配Chat Completions格式）"""
         user_prompt = text
         
         # 构建messages（兼容OpenAI Chat API格式）
         messages = [
-            {"role": "system", "content": self.system_prompt},
+            {"role": "system", "content": system_prompt or self.system_prompt},
             {"role": "user", "content": user_prompt}
         ]
         
@@ -261,30 +265,42 @@ class LLMGeneralTranslator(TranslatorBase):
             target_lang: 目标语言
             **kwargs: 额外参数（覆盖单次请求的模型参数）
         """
-        # 构建请求参数
+        model_name = kwargs.get("model_name", self.model_name)
+        temperature = kwargs.get("temperature", self.temperature)
+        max_tokens = kwargs.get("max_tokens", self.max_tokens)
+        top_p = kwargs.get("top_p", self.top_p)
+        frequency_penalty = kwargs.get("frequency_penalty", self.frequency_penalty)
+        presence_penalty = kwargs.get("presence_penalty", self.presence_penalty)
+        response_format = kwargs.get("response_format", self.response_format)
+        system_prompt = kwargs.get("system_prompt", self.system_prompt)
+        timeout = kwargs.get("timeout", self.config.timeout)
+        extra_body = dict(self.extra_body or {})
+        extra_body.update(kwargs.get("extra_body") or {})
+
         request_data = {
-            "model": self.model_name,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "top_p": self.top_p,
-            "frequency_penalty": self.frequency_penalty,
-            "presence_penalty": self.presence_penalty,
-            "response_format": {"type": self.response_format},
-            "messages": self._build_translation_prompt(text)
+            "model": model_name,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "top_p": top_p,
+            "frequency_penalty": frequency_penalty,
+            "presence_penalty": presence_penalty,
+            "response_format": {"type": response_format},
+            "messages": self._build_translation_prompt(text, system_prompt)
         }
 
         # 合并额外请求体参数（extra_body中的键会覆盖已有键）
-        if self.extra_body:
-            request_data.update(self.extra_body)
+        if extra_body:
+            request_data.update(extra_body)
                 
         try:
             # 发送API请求
-            response = self._session.post(
+            response = self._get_session().post(
                 url=self.complete_api_url,
                 headers=self.headers,
                 json=request_data,
-                timeout=self.config.timeout
+                timeout=timeout
             )
+            self._record_http_response(response)
             
             # 状态码处理
             if response.status_code == 400:

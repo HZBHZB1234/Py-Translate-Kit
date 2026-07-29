@@ -4,7 +4,15 @@ Py-Translate-Kit - 轻量级Python翻译工具包
 此包提供了一个统一的翻译接口，支持多种翻译服务
 """
 
-from .base import TranslatorBase, TranslationConfig, TranslationError, ConfigurationError, APIError
+from .base import (
+    TranslatorBase,
+    TranslationConfig,
+    TranslationRequest,
+    TranslationResult,
+    TranslationError,
+    ConfigurationError,
+    APIError,
+)
 from .baidu import BaiduTranslator
 from .google import GoogleTranslator
 from .deepl import DeepLTranslator
@@ -44,6 +52,8 @@ relateForm = {
 __all__ = [
     'TranslatorBase',
     'TranslationConfig',
+    'TranslationRequest',
+    'TranslationResult',
     'TranslationError',
     'ConfigurationError',
     'APIError',
@@ -66,5 +76,5 @@ __all__ = [
     'kit'
 ]
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __author__ = "HZBHZB1234"

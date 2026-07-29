@@ -1,5 +1,30 @@
 # Py-Translate-Kit 🌐
 
+## Structured concurrent requests
+
+Version 0.4 adds an order-preserving batch API with per-request immutable
+options and isolated failures:
+
+```python
+from translatekit import TranslationRequest
+
+results = translator.translate_many([
+    TranslationRequest(
+        text="content",
+        request_id="stage-1-part-1",
+        options={
+            "system_prompt": "Translate the supplied payload.",
+            "response_format": "json_object",
+            "timeout": 90,
+        },
+    ),
+])
+```
+
+Calls on the same translator instance share its `max_workers` executor and
+rate limiter. Existing `translate(str)` and `translate(list[str])` calls remain
+compatible.
+
 > 一个现代化、轻量级的Python翻译工具包，简化多平台翻译服务集成。
 
 [![PyPI version](https://badge.fury.io/py/translatekit.svg)](https://badge.fury.io/py/translatekit)

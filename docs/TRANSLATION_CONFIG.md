@@ -68,8 +68,9 @@
 ### 5. 并发设置
 
 - **max_workers**: `int = 5`
-  - 最大工作线程数，用于并发处理翻译任务
+  - 同一翻译器实例共享的最大请求线程数
   - 默认为5个线程
+  - 多个并发 `translate_many()` 调用仍共同受此上限约束
 
 - **batch_size**: `int = 10`
   - 批处理大小，批量翻译时每批处理的文本数量
@@ -117,4 +118,25 @@ translator = tkit.BaiduTranslator(config=config)
 # 使用翻译器
 result = translator.translate("你好，世界！")
 print(result)
+```
+
+## 结构化批量请求
+
+`translate_many()` 接受 `TranslationRequest` 列表并按输入顺序返回
+`TranslationResult`。每个请求的 `options` 仅对本次调用生效，不会修改翻译器共享配置；
+单项失败保存在对应结果的 `error` 中，不会中止同批其他请求。
+
+```python
+requests = [
+    tkit.TranslationRequest(
+        text="payload",
+        request_id="stage-1-part-1",
+        options={
+            "system_prompt": "Translate this payload.",
+            "response_format": "json_object",
+            "timeout": 90,
+        },
+    )
+]
+results = translator.translate_many(requests)
 ```
